@@ -1,4 +1,3 @@
-cat > install.sh << 'EOF'
 #!/bin/bash
 # BSProxy Installer
 REPO_URL="https://github.com/Ravenjk007/BSProxy.git"
@@ -123,6 +122,3 @@ else
     echo "   - TCP Fallback (qualquer outro)"
     echo ""
 fi
-EOF
-
-chmod +x install.sh
