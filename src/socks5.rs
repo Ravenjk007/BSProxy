@@ -1,34 +1,18 @@
-cat > src/socks5.rs << 'EOF'
 use tokio::net::TcpStream;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};  // <--- IMPORTANTE!
 use anyhow::Result;
 use log::info;
 
 pub async fn handle(mut socket: TcpStream) -> Result<()> {
-    // Handshake SOCKS5
     let mut buf = [0u8; 2];
     socket.read_exact(&mut buf).await?;
-    
-    if buf[0] != 0x05 {
-        anyhow::bail!("Invalid SOCKS version");
-    }
-    
-    // Responder com "no authentication"
+    if buf[0] != 0x05 { anyhow::bail!("Invalid SOCKS version"); }
     socket.write_all(&[0x05, 0x00]).await?;
-    
-    // Ler request
     let mut req = [0u8; 4];
     socket.read_exact(&mut req).await?;
-    
-    if req[0] != 0x05 {
-        anyhow::bail!("Invalid SOCKS request");
-    }
-    
-    let cmd = req[1];
-    match cmd {
+    if req[0] != 0x05 { anyhow::bail!("Invalid SOCKS request"); }
+    match req[1] {
         0x01 => handle_connect(socket).await,
-        0x02 => handle_bind(socket).await,
-        0x03 => handle_udp(socket).await,
         _ => anyhow::bail!("Unsupported SOCKS command"),
     }
 }
@@ -36,7 +20,6 @@ pub async fn handle(mut socket: TcpStream) -> Result<()> {
 async fn handle_connect(mut socket: TcpStream) -> Result<()> {
     let mut addr_type = [0u8; 1];
     socket.read_exact(&mut addr_type).await?;
-    
     let target = match addr_type[0] {
         0x01 => {
             let mut ip = [0u8; 4];
@@ -59,25 +42,16 @@ async fn handle_connect(mut socket: TcpStream) -> Result<()> {
         }
         _ => anyhow::bail!("Unsupported address type"),
     };
-    
     info!("SOCKS5 connecting to: {}", target);
-    
     match TcpStream::connect(&target).await {
         Ok(mut target_stream) => {
-            socket.write_all(&[
-                0x05, 0x00, 0x00, 0x01,
-                0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00
-            ]).await?;
-            
+            socket.write_all(&[0x05, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]).await?;
             let (mut reader, mut writer) = socket.into_split();
             let (mut target_reader, mut target_writer) = target_stream.into_split();
-            
             tokio::try_join!(
                 tokio::io::copy(&mut reader, &mut target_writer),
                 tokio::io::copy(&mut target_reader, &mut writer)
             )?;
-            
             Ok(())
         }
         Err(_) => {
@@ -86,12 +60,3 @@ async fn handle_connect(mut socket: TcpStream) -> Result<()> {
         }
     }
 }
-
-async fn handle_bind(_socket: TcpStream) -> Result<()> {
-    anyhow::bail!("BIND not implemented")
-}
-
-async fn handle_udp(_socket: TcpStream) -> Result<()> {
-    anyhow::bail!("UDP ASSOCIATE not implemented")
-}
-EOF
