@@ -8,7 +8,7 @@ use tokio::net::TcpListener;
 use tokio::io::AsyncReadExt;
 use clap::Parser;
 use anyhow::Result;
-use log::{info, error};
+use log::{info, error, warn};
 use std::process::Command;
 
 #[derive(Parser)]
@@ -38,7 +38,22 @@ async fn main() -> Result<()> {
             .init();
     }
     
-    let addr = format!("0.0.0.0:{}", cli.port);
+    let port = cli.port.parse::<u16>().unwrap_or(8080);
+    let addr = format!("0.0.0.0:{}", port);
+    
+    // Verificação especial para porta 443
+    if port == 443 {
+        warn!("⚠️ Porta 443 requer certificado SSL/TLS!");
+        warn!("📂 Certificados procurados em: /opt/bsproxy/cert.pem e /opt/bsproxy/cert.key");
+        warn!("   Ou use: certbot certonly --standalone -d seu-dominio.com");
+        warn!("   Depois copie: cp /etc/letsencrypt/live/seu-dominio.com/* /opt/bsproxy/");
+        
+        // Verifica se o certificado existe
+        if !std::path::Path::new("/opt/bsproxy/cert.pem").exists() {
+            warn!("⚠️ Certificado não encontrado! Usando self-signed (clientes vão ver erro)");
+        }
+    }
+    
     let listener = TcpListener::bind(&addr).await?;
     info!("🚀 BSProxy Multiprotocol listening on {}", addr);
     info!("📡 Protocols: SOCKS5, TLS, WebSocket, SECURITY, TCP");
