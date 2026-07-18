@@ -1,12 +1,13 @@
+cat > src/socks5.rs << 'EOF'
 use tokio::net::TcpStream;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};  // <--- IMPORTANTE!
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use anyhow::Result;
 use log::info;
 
 pub async fn handle(mut socket: TcpStream) -> Result<()> {
     let mut buf = [0u8; 2];
     socket.read_exact(&mut buf).await?;
-    if buf[0] != 0x05 { anyhow::bail!("Invalid SOCKS version"); }
+    if buf[0] != 0x05 { anyhow::bail!("Invalid SOCKS"); }
     socket.write_all(&[0x05, 0x00]).await?;
     let mut req = [0u8; 4];
     socket.read_exact(&mut req).await?;
@@ -42,7 +43,7 @@ async fn handle_connect(mut socket: TcpStream) -> Result<()> {
         }
         _ => anyhow::bail!("Unsupported address type"),
     };
-    info!("SOCKS5 connecting to: {}", target);
+    info!("SOCKS5 -> {}", target);
     match TcpStream::connect(&target).await {
         Ok(mut target_stream) => {
             socket.write_all(&[0x05, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]).await?;
@@ -60,3 +61,4 @@ async fn handle_connect(mut socket: TcpStream) -> Result<()> {
         }
     }
 }
+EOF
