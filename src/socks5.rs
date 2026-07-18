@@ -1,13 +1,13 @@
-use tokio::io::{copy_bidirectional, AsyncReadExt, AsyncWriteExt};
+cat > src/socks5.rs << 'EOF'
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use anyhow::Result;
 use log::info;
 
-/// Implementação SOCKS5 (RFC 1928) - suporta CONNECT
 pub async fn handle_socks5(mut client: TcpStream) -> Result<()> {
     info!("🔐 SOCKS5 handshake");
     
-    // --- Etapa 1: negociação do método de autenticação ---
+    // Etapa 1: negociação do método de autenticação
     let mut header = [0u8; 2];
     client.read_exact(&mut header).await?;
     let nmethods = header[1] as usize;
@@ -18,7 +18,7 @@ pub async fn handle_socks5(mut client: TcpStream) -> Result<()> {
     // Responder sem autenticação (0x00)
     client.write_all(&[0x05, 0x00]).await?;
 
-    // --- Etapa 2: requisição de conexão ---
+    // Etapa 2: requisição de conexão
     let mut req = [0u8; 4];
     client.read_exact(&mut req).await?;
     let cmd = req[1];
@@ -26,14 +26,12 @@ pub async fn handle_socks5(mut client: TcpStream) -> Result<()> {
 
     let target_addr = match atyp {
         0x01 => {
-            // Endereço IPv4
             let mut addr = [0u8; 4];
             client.read_exact(&mut addr).await?;
             let port = read_port(&mut client).await?;
             format!("{}.{}.{}.{}:{}", addr[0], addr[1], addr[2], addr[3], port)
         }
         0x03 => {
-            // Nome de domínio
             let mut len_buf = [0u8; 1];
             client.read_exact(&mut len_buf).await?;
             let len = len_buf[0] as usize;
@@ -44,7 +42,6 @@ pub async fn handle_socks5(mut client: TcpStream) -> Result<()> {
             format!("{}:{}", String::from_utf8_lossy(&domain), port)
         }
         0x04 => {
-            // Endereço IPv6
             let mut addr = [0u8; 16];
             client.read_exact(&mut addr).await?;
             let port = read_port(&mut client).await?;
@@ -97,3 +94,4 @@ async fn send_reply(client: &mut TcpStream, code: u8) -> std::io::Result<()> {
         .write_all(&[0x05, code, 0x00, 0x01, 0, 0, 0, 0, 0, 0])
         .await
 }
+EOF
