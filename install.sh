@@ -96,20 +96,13 @@ else
     chmod +x /opt/bsproxy/proxy
     [ -f /opt/bsproxy/menu ] && chmod +x /opt/bsproxy/menu
 
-    # CRIAR O LINK DE FORMA CORRETA (usando cp em vez de ln)
+    # CRIAR O LINK USANDO CP (mais confiável)
     if [ -f /opt/bsproxy/menu ]; then
         cp /opt/bsproxy/menu /usr/local/bin/bsproxy
     else
         cp /opt/bsproxy/proxy /usr/local/bin/bsproxy
     fi
     chmod +x /usr/local/bin/bsproxy
-
-    # Verificar se criou
-    if [ -f /usr/local/bin/bsproxy ]; then
-        echo "✅ Comando 'bsproxy' criado com sucesso!"
-    else
-        echo "⚠️ Falha ao criar o comando 'bsproxy'"
-    fi
     increment_step
 
     show_progress "Limpando diretórios temporários..."
