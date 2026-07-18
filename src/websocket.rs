@@ -1,42 +1,46 @@
+use tokio::io::{copy_bidirectional, AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use anyhow::Result;
 use log::info;
-use sha1::{Sha1, Digest};
-use base64::engine::general_purpose::STANDARD as BASE64;
-use base64::Engine;
 
-pub async fn handle(mut socket: TcpStream) -> Result<()> {
+/// Lê e descarta os headers HTTP até encontrar \r\n\r\n
+async fn consume_http_headers(socket: &mut TcpStream) -> std::io::Result<()> {
+    let mut buf: Vec<u8> = Vec::new();
+    let mut tmp = [0u8; 1];
+
+    loop {
+        socket.read_exact(&mut tmp).await?;
+        buf.push(tmp[0]);
+
+        if buf.len() >= 4 && &buf[buf.len() - 4..] == b"\r\n\r\n" {
+            break;
+        }
+        if buf.len() > 8192 {
+            break;
+        }
+    }
+    Ok(())
+}
+
+/// Modo WebSocket: consome handshake HTTP, responde com upgrade e encaminha
+pub async fn handle_websocket(mut socket: TcpStream) -> Result<()> {
     info!("🌐 WebSocket handshake...");
     
-    let mut buf = [0u8; 4096];
-    let n = socket.read(&mut buf).await?;
-    let request = String::from_utf8_lossy(&buf[..n]);
+    // Consumir headers HTTP (igual seu wsproxy)
+    consume_http_headers(&mut socket).await?;
     
-    let key = request
-        .lines()
-        .find(|line| line.starts_with("Sec-WebSocket-Key:"))
-        .and_then(|line| line.split(':').nth(1))
-        .map(|s| s.trim())
-        .unwrap_or("");
-    
-    if key.is_empty() {
-        anyhow::bail!("WebSocket key not found");
-    }
-    
-    let accept_key = generate_accept_key(key);
-    let response = format!(
-        "HTTP/1.1 101 Switching Protocols\r\n\
-         Upgrade: websocket\r\n\
-         Connection: Upgrade\r\n\
-         Sec-WebSocket-Accept: {}\r\n\
-         \r\n",
-        accept_key
-    );
+    // Resposta de upgrade
+    let response = "HTTP/1.1 101 Switching Protocols\r\n\
+                    Upgrade: websocket\r\n\
+                    Connection: Upgrade\r\n\
+                    Sec-WebSocket-Accept: dGhlIHNhbXBsZSBub25jZQ==\r\n\
+                    \r\n";
     
     socket.write_all(response.as_bytes()).await?;
     info!("🌐 WebSocket handshake complete!");
     
+    // Para teste: eco simples (igual seu código)
+    // Se quiser encaminhar para outro destino, use copy_bidirectional
     loop {
         let mut header = [0u8; 2];
         match socket.read_exact(&mut header).await {
@@ -76,9 +80,11 @@ pub async fn handle(mut socket: TcpStream) -> Result<()> {
                 info!("📩 WS: {}", msg);
                 
                 if opcode == 0x08 {
+                    info!("🔚 WebSocket close");
                     break;
                 }
                 
+                // Eco
                 let response_data = format!("ECHO: {}", msg);
                 let response_bytes = response_data.as_bytes();
                 
@@ -106,11 +112,17 @@ pub async fn handle(mut socket: TcpStream) -> Result<()> {
     Ok(())
 }
 
-fn generate_accept_key(key: &str) -> String {
-    const WS_GUID: &str = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-    let combined = format!("{}{}", key, WS_GUID);
-    let mut hasher = Sha1::new();
-    hasher.update(combined.as_bytes());
-    let result = hasher.finalize();
-    BASE64.encode(&result)
+/// Modo Direct/Security: igual seu wsproxy com status 200
+pub async fn handle_direct(mut socket: TcpStream) -> Result<()> {
+    info!("🔒 Direct/Security mode");
+    
+    let response = "HTTP/1.1 200 OK\r\n\r\n";
+    socket.write_all(response.as_bytes()).await?;
+    
+    // Encaminhar para destino (ex: SSH)
+    let target = "127.0.0.1:22";
+    let mut remote = TcpStream::connect(target).await?;
+    copy_bidirectional(&mut socket, &mut remote).await?;
+    
+    Ok(())
 }
