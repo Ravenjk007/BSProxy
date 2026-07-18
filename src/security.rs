@@ -4,7 +4,6 @@ use anyhow::Result;
 use log::info;
 
 /// Handshake SECURITY personalizado (igual wssecury)
-/// Detecta conexões que começam com "SECURITY" ou "AUTH"
 pub async fn handle_security(mut socket: TcpStream) -> Result<()> {
     info!("🔐 SECURITY handshake...");
     
@@ -15,7 +14,7 @@ pub async fn handle_security(mut socket: TcpStream) -> Result<()> {
     
     info!("📩 SECURITY payload: {}", data);
     
-    // Responder com handshake SECURITY (igual wssecury)
+    // Responder com handshake SECURITY
     let response = "HTTP/1.1 200 OK\r\n\
                     Connection: Upgrade\r\n\
                     Upgrade: security\r\n\
@@ -25,13 +24,11 @@ pub async fn handle_security(mut socket: TcpStream) -> Result<()> {
     socket.write_all(response.as_bytes()).await?;
     info!("🔐 SECURITY handshake complete! Encaminhando para SSH...");
     
-    // Encaminhar para SSH (ou destino configurado)
     let target = "127.0.0.1:22";
     
     match TcpStream::connect(target).await {
         Ok(remote) => {
             info!("✅ Conectado ao SSH na porta 22");
-            
             let (mut client_reader, mut client_writer) = socket.into_split();
             let (mut remote_reader, mut remote_writer) = remote.into_split();
             
