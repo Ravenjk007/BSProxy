@@ -3,7 +3,7 @@
 REPO_URL="https://github.com/Ravenjk007/BSProxy.git"
 REPO_BRANCH="main"
 CMD_NAME="bsproxy"
-TOTAL_STEPS=9
+TOTAL_STEPS=10
 CURRENT_STEP=0
 
 show_progress() {
@@ -56,7 +56,7 @@ else
 
     show_progress "Atualizando o sistema..."
     apt upgrade -y > /dev/null 2>&1 || error_exit "Falha ao atualizar o sistema"
-    apt-get install curl build-essential git -y > /dev/null 2>&1 || error_exit "Falha ao instalar pacotes"
+    apt-get install curl build-essential git certbot -y > /dev/null 2>&1 || error_exit "Falha ao instalar pacotes"
     increment_step
 
     show_progress "Criando diretorio /opt/bsproxy..."
@@ -103,6 +103,17 @@ else
     fi
     increment_step
 
+    show_progress "Configurando suporte a SSL (porta 443)..."
+    # Cria um certificado self-signed padrão se não existir
+    if [ ! -f /opt/bsproxy/cert.pem ]; then
+        echo -e "\n📦 Gerando certificado self-signed para teste..."
+        openssl req -x509 -newkey rsa:4096 -keyout /opt/bsproxy/cert.key -out /opt/bsproxy/cert.pem -days 365 -nodes -subj "/CN=localhost" > /dev/null 2>&1
+        chmod 644 /opt/bsproxy/cert.pem
+        chmod 600 /opt/bsproxy/cert.key
+        echo "✅ Certificado self-signed gerado em /opt/bsproxy/"
+    fi
+    increment_step
+
     show_progress "Limpando diretórios temporários..."
     cd /root/
     rm -rf /root/BSProxy/
@@ -113,12 +124,22 @@ else
     echo ""
     echo "🚀 Digite '$CMD_NAME' para acessar o menu."
     echo "   Ou 'bsproxy -p 80' para abrir porta 80 diretamente."
+    echo "   Ou 'bsproxy -p 443' para abrir porta 443 (HTTPS/TLS)"
     echo ""
     echo "📡 Protocolos suportados:"
     echo "   - SOCKS5 (byte 0x05)"
-    echo "   - TLS/SECURITY (byte 0x16)"
+    echo "   - TLS/SECURITY (byte 0x16) - com suporte a certificados"
     echo "   - WebSocket (GET / ou HTTP/)"
     echo "   - SECURITY (AUTH ou SECURITY)"
     echo "   - TCP Fallback (qualquer outro)"
+    echo ""
+    echo "📂 Certificados SSL:"
+    echo "   - /opt/bsproxy/cert.pem (certificado)"
+    echo "   - /opt/bsproxy/cert.key (chave privada)"
+    echo ""
+    echo "🔒 Para usar certificado real:"
+    echo "   certbot certonly --standalone -d seu-dominio.com"
+    echo "   cp /etc/letsencrypt/live/seu-dominio.com/fullchain.pem /opt/bsproxy/cert.pem"
+    echo "   cp /etc/letsencrypt/live/seu-dominio.com/privkey.pem /opt/bsproxy/cert.key"
     echo ""
 fi
