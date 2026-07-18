@@ -5,10 +5,6 @@ REPO_BRANCH="main"
 
 echo "🔧 Instalando BSProxy..."
 
-# Instalar dependências
-apt update -y
-apt install curl build-essential git -y
-
 # Instalar Rust
 if ! command -v cargo &> /dev/null; then
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
@@ -26,14 +22,11 @@ mkdir -p /opt/bsproxy
 cp ./target/release/bsproxy /opt/bsproxy/proxy
 chmod +x /opt/bsproxy/proxy
 
-# Copiar menu se existir
+# Copiar menu
 if [ -f /root/BSProxy/menu.sh ]; then
     cp /root/BSProxy/menu.sh /opt/bsproxy/menu
-    chmod +x /opt/bsproxy/menu
-fi
-
-# Se não tiver menu, criar um padrão
-if [ ! -f /opt/bsproxy/menu ]; then
+else
+    # Menu padrão
     cat > /opt/bsproxy/menu << 'MENUEOF'
 #!/bin/bash
 BSPROXY="/opt/bsproxy/proxy"
@@ -132,17 +125,13 @@ MENUEOF
 fi
 
 # Criar comando
-if [ -f /opt/bsproxy/menu ]; then
-    cp /opt/bsproxy/menu /usr/local/bin/bsproxy
-else
-    cp /opt/bsproxy/proxy /usr/local/bin/bsproxy
-fi
+cp /opt/bsproxy/menu /usr/local/bin/bsproxy
 chmod +x /usr/local/bin/bsproxy
 
 # Limpar
+cd /root
 rm -rf /root/BSProxy
 
 echo ""
 echo "✅ Instalação concluída!"
 echo "🚀 Digite 'bsproxy' para acessar o menu."
-echo "   Ou 'bsproxy -p 80' para abrir porta 80."
