@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ============================================
-# BSProxy Menu - Premium
+# BS.          BSProxy Menu - Free
 # ============================================
 
 BSPROXY="/opt/bsproxy/proxy"
