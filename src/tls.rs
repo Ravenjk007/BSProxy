@@ -1,3 +1,4 @@
+cat > src/tls.rs << 'EOF'
 use tokio::net::TcpStream;
 use tokio_rustls::TlsAcceptor;
 use rustls::{ServerConfig, Certificate, PrivateKey};
@@ -9,7 +10,6 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 pub async fn handle_tls(socket: TcpStream) -> Result<()> {
     info!("🔒 TLS handshake...");
     
-    // Gerar certificado self-signed
     let cert = rcgen::generate_simple_self_signed(vec!["localhost".to_string()])?;
     let cert_der = cert.serialize_der()?;
     let key_der = cert.serialize_private_key_der();
@@ -24,7 +24,6 @@ pub async fn handle_tls(socket: TcpStream) -> Result<()> {
     
     info!("🔒 TLS handshake complete!");
     
-    // Eco simples para teste
     let mut buf = [0u8; 1024];
     loop {
         match tls_stream.read(&mut buf).await {
@@ -40,3 +39,4 @@ pub async fn handle_tls(socket: TcpStream) -> Result<()> {
     
     Ok(())
 }
+EOF
