@@ -96,7 +96,7 @@ else
     chmod +x /opt/bsproxy/proxy
     [ -f /opt/bsproxy/menu ] && chmod +x /opt/bsproxy/menu
 
-    # CRIAR O LINK USANDO CP (mais confiável)
+    # Criar o link usando cp (mais confiável)
     if [ -f /opt/bsproxy/menu ]; then
         cp /opt/bsproxy/menu /usr/local/bin/bsproxy
     else
