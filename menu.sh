@@ -57,7 +57,7 @@ open_port() {
         echo "✅ Porta ${PORT} aberta!"
     else
         echo "❌ Falha!"
-        rm -f "${PID_FILE}${PORT}.pid}"
+        rm -f "${PID_FILE}${PORT}.pid"
     fi
     sleep 2
 }
