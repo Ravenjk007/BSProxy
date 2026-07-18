@@ -1,7 +1,7 @@
 mod socks5;
 mod tls;
-mod tcp_fallback;
 mod websocket;
+mod tcp_fallback;
 
 use tokio::net::TcpListener;
 use tokio::io::AsyncReadExt;
@@ -12,7 +12,7 @@ use std::process::Command;
 
 #[derive(Parser)]
 #[command(name = "bsproxy")]
-#[command(about = "Multiprotocol proxy server", long_about = None)]
+#[command(about = "Multiprotocol proxy server (SOCKS5 + TLS + WebSocket + TCP)")]
 struct Cli {
     #[arg(short = 'p', long = "port", default_value = "")]
     port: String,
@@ -50,20 +50,20 @@ async fn main() -> Result<()> {
                     match buf[0] {
                         0x05 => {
                             info!("🔐 SOCKS5");
-                            let _ = socks5::handle(socket).await;
+                            let _ = socks5::handle_socks5(socket).await;
                         }
                         0x16 => {
                             info!("🔒 TLS");
-                            let _ = tls::handle(socket).await;
+                            let _ = tls::handle_tls(socket).await;
                         }
                         _ => {
                             let data_str = String::from_utf8_lossy(&buf[..n]);
                             if data_str.starts_with("GET ") || data_str.starts_with("HTTP/") {
                                 info!("🌐 WebSocket");
-                                let _ = websocket::handle(socket).await;
+                                let _ = websocket::handle_websocket(socket).await;
                             } else {
                                 info!("📦 TCP");
-                                let _ = tcp_fallback::handle(socket).await;
+                                let _ = tcp_fallback::handle_tcp(socket).await;
                             }
                         }
                     }
