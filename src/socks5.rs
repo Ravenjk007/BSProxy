@@ -4,7 +4,7 @@ use anyhow::Result;
 use log::info;
 
 pub async fn handle_socks5(mut client: TcpStream) -> Result<()> {
-    info!("🔐 SOCKS5 handshake");
+    info!("🔐 SOCKS5");
     
     let mut header = [0u8; 2];
     client.read_exact(&mut header).await?;
@@ -48,7 +48,7 @@ pub async fn handle_socks5(mut client: TcpStream) -> Result<()> {
         anyhow::bail!("Unsupported SOCKS command");
     }
 
-    info!("SOCKS5 connecting to: {}", target_addr);
+    info!("SOCKS5 -> {}", target_addr);
 
     match TcpStream::connect(&target_addr).await {
         Ok(remote) => {
