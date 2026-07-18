@@ -1,114 +1,92 @@
 #!/bin/bash
-# BSProxy Manager - menu interativo de portas (estilo RustyManager)
 
-PROXY_BIN="/opt/bsproxy/proxy"
-SERVICE_PREFIX="bsproxy-"
-DEFAULT_TARGET="127.0.0.1:22"
-DEFAULT_STATUS="@BSProxy"
-
-list_ports() {
-    systemctl list-units --type=service --all --no-legend "${SERVICE_PREFIX}*.service" 2>/dev/null \
-        | awk '{print $1}' \
-        | sed -E "s/^${SERVICE_PREFIX}([0-9]+)\.service\$/\1/"
-}
+BSPROXY="./target/release/bsproxy"
+PID_FILE="/tmp/bsproxy_"
+LOG_FILE="/tmp/bsproxy_"
 
 show_menu() {
     clear
-    local ports
-    ports=$(list_ports | tr '\n' ' ')
-    [ -z "$ports" ] && ports="nenhuma"
-
-    echo "================= @BSManager ================="
-    echo "|                 BSPROXY                      |"
-    echo "------------------------------------------------"
-    echo "| Porta(s): $ports"
-    echo "------------------------------------------------"
-    echo "| 1 - Abrir Porta"
-    echo "| 2 - Fechar Porta"
-    echo "| 0 - Sair"
-    echo "------------------------------------------------"
+    echo "====================================="
+    echo "          QBSManager                 "
+    echo "====================================="
+    echo "          BSPROXY                    "
+    echo ""
+    echo "Porta(s): 80"
+    echo ""
+    echo " 1 - Abrir Porta"
+    echo " 2 - Fechar Porta"
+    echo " 8 - Salir"
+    echo ""
+    echo -n "--> Selecione uma opção: "
 }
 
 open_port() {
-    read -rp "Digite a porta que deseja abrir: " port
-    if ! [[ "$port" =~ ^[0-9]+$ ]] || [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
-        echo "Porta inválida."
+    read -p "Digite o número da porta: " PORT
+    if [[ -z "$PORT" ]]; then
+        echo "Porta inválida!"
+        return
+    fi
+    
+    # Verificar se já está rodando
+    if [[ -f "${PID_FILE}${PORT}.pid" ]]; then
+        echo "❌ Porta ${PORT} já está aberta!"
         sleep 2
         return
     fi
-
-    local service="${SERVICE_PREFIX}${port}.service"
-    if [ -f "/etc/systemd/system/${service}" ]; then
-        echo "Essa porta já está aberta pelo BSProxy."
-        sleep 2
-        return
-    fi
-
-    cat > "/etc/systemd/system/${service}" <<EOF
-[Unit]
-Description=BSProxy na porta ${port}
-After=network.target
-
-[Service]
-Type=simple
-ExecStart=${PROXY_BIN} --port ${port} --status "${DEFAULT_STATUS}" --target ${DEFAULT_TARGET}
-Restart=always
-RestartSec=3
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-    systemctl daemon-reload
-    systemctl enable "${service}" > /dev/null 2>&1
-    systemctl start "${service}"
-
+    
+    echo "🔓 Abrindo porta ${PORT} com multiprotocolo..."
+    echo "   Protocols: SOCKS5 + TLS/SECURITY + TCP Fallback"
+    
+    # Iniciar o bsproxy com a porta
+    nohup ${BSPROXY} -p ${PORT} > "${LOG_FILE}${PORT}.log" 2>&1 &
+    echo $! > "${PID_FILE}${PORT}.pid"
+    
     sleep 1
-    if systemctl is-active --quiet "${service}"; then
-        echo "Porta ${port} aberta com sucesso."
+    if ps -p $(cat "${PID_FILE}${PORT}.pid") > /dev/null 2>&1; then
+        echo "✅ Porta ${PORT} aberta com sucesso!"
+        echo "📋 Log: ${LOG_FILE}${PORT}.log"
+        echo ""
+        echo "🧪 Teste SOCKS5: curl --socks5 localhost:${PORT} http://example.com"
+        echo "🧪 Teste TLS: openssl s_client -connect localhost:${PORT}"
     else
-        echo "Falha ao iniciar. Veja: journalctl -u ${service} --no-pager"
-        rm -f "/etc/systemd/system/${service}"
-        systemctl daemon-reload
+        echo "❌ Falha ao abrir porta ${PORT}!"
+        rm -f "${PID_FILE}${PORT}.pid"
     fi
-    sleep 2
+    sleep 3
 }
 
 close_port() {
-    local ports
-    ports=$(list_ports)
-    if [ -z "$ports" ]; then
-        echo "Nenhuma porta aberta no momento."
-        sleep 2
+    read -p "Digite o número da porta: " PORT
+    if [[ -z "$PORT" ]]; then
+        echo "Porta inválida!"
         return
     fi
-
-    echo "Portas abertas: $(echo "$ports" | tr '\n' ' ')"
-    read -rp "Digite a porta que deseja fechar: " port
-    local service="${SERVICE_PREFIX}${port}.service"
-
-    if [ ! -f "/etc/systemd/system/${service}" ]; then
-        echo "Essa porta não está aberta pelo BSProxy."
-        sleep 2
-        return
+    
+    if [[ -f "${PID_FILE}${PORT}.pid" ]]; then
+        PID=$(cat "${PID_FILE}${PORT}.pid")
+        kill -9 ${PID} 2>/dev/null
+        rm -f "${PID_FILE}${PORT}.pid"
+        echo "✅ Porta ${PORT} fechada com sucesso!"
+    else
+        echo "❌ Porta ${PORT} não está aberta!"
     fi
-
-    systemctl stop "${service}"
-    systemctl disable "${service}" > /dev/null 2>&1
-    rm -f "/etc/systemd/system/${service}"
-    systemctl daemon-reload
-
-    echo "Porta ${port} fechada com sucesso."
     sleep 2
 }
 
 while true; do
     show_menu
-    read -rp "--> Selecione uma opção: " opt
-    case "$opt" in
+    read OPTION
+    
+    case $OPTION in
         1) open_port ;;
         2) close_port ;;
-        0) exit 0 ;;
-        *) echo "Opção inválida."; sleep 1 ;;
+        8) 
+            echo "👋 Saindo..."
+            exit 0
+            ;;
+        *) 
+            echo "❌ Opção inválida!"
+            sleep 2
+            ;;
     esac
 done
