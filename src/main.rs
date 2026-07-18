@@ -1,6 +1,3 @@
-mkdir -p src
-
-cat > src/main.rs << 'EOF'
 mod socks5;
 mod tls;
 mod tcp_fallback;
@@ -10,16 +7,14 @@ use tokio::io::AsyncReadExt;
 use clap::Parser;
 use anyhow::Result;
 use log::{info, error};
+use std::process::Command;
 
 #[derive(Parser)]
 #[command(name = "bsproxy")]
 #[command(about = "Multiprotocol proxy server (SOCKS5 + TLS + TCP)", long_about = None)]
 struct Cli {
-    /// Porta para escutar
-    #[arg(short = 'p', long = "port", default_value = "8080")]
-    port: u16,
-    
-    /// Modo debug
+    #[arg(short = 'p', long = "port", default_value = "")]
+    port: String,
     #[arg(short = 'd', long = "debug")]
     debug: bool,
 }
@@ -28,6 +23,13 @@ struct Cli {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
     
+    // Se não foi passada porta, abre o menu
+    if cli.port.is_empty() {
+        show_menu();
+        return Ok(());
+    }
+    
+    // Se foi passada porta, inicia o proxy
     if cli.debug {
         env_logger::init();
     } else {
@@ -40,7 +42,6 @@ async fn main() -> Result<()> {
     let listener = TcpListener::bind(&addr).await?;
     info!("🚀 BSProxy Multiprotocol listening on {}", addr);
     info!("📡 Protocols: SOCKS5, TLS/SECURITY, TCP Fallback");
-    info!("💡 Use 'bsproxy -p 80' para abrir porta 80");
 
     while let Ok((mut socket, _)) = listener.accept().await {
         tokio::spawn(async move {
@@ -50,31 +51,43 @@ async fn main() -> Result<()> {
                     match buf[0] {
                         0x05 => {
                             info!("🔐 SOCKS5 connection");
-                            if let Err(e) = socks5::handle(socket).await {
-                                error!("SOCKS5 error: {}", e);
-                            }
+                            let _ = socks5::handle(socket).await;
                         }
                         0x16 => {
                             info!("🔒 TLS/SECURITY connection");
-                            if let Err(e) = tls::handle(socket).await {
-                                error!("TLS error: {}", e);
-                            }
+                            let _ = tls::handle(socket).await;
                         }
                         _ => {
                             info!("📦 TCP Fallback connection");
-                            if let Err(e) = tcp_fallback::handle(socket).await {
-                                error!("TCP error: {}", e);
-                            }
+                            let _ = tcp_fallback::handle(socket).await;
                         }
                     }
                 }
-                Err(e) => {
-                    error!("Failed to peek connection: {}", e);
-                }
+                Err(e) => error!("Failed to peek: {}", e),
             }
         });
     }
-
     Ok(())
 }
-EOF
+
+fn show_menu() {
+    // Procura o menu em vários lugares
+    let menu_paths = [
+        "./menu.sh",
+        "/opt/bsproxy/menu",
+        "/usr/local/bin/menu",
+        &format!("{}/BSProxy/menu.sh", std::env::var("HOME").unwrap_or_else(|_| "~".to_string())),
+    ];
+    
+    for path in menu_paths {
+        if std::path::Path::new(path).exists() {
+            let _ = Command::new("bash")
+                .arg(path)
+                .status();
+            return;
+        }
+    }
+    
+    println!("❌ Menu não encontrado!");
+    println!("Execute: /opt/bsproxy/menu");
+}
