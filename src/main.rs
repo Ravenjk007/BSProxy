@@ -1,6 +1,3 @@
-cd /root/BSProxy
-
-cat > src/main.rs << 'EOF'
 mod socks5;
 mod tls;
 mod tcp_fallback;
@@ -27,13 +24,11 @@ struct Cli {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
     
-    // Se não foi passada porta, abre o menu
     if cli.port.is_empty() {
         show_menu();
         return Ok(());
     }
     
-    // Se foi passada porta, inicia o proxy
     if cli.debug {
         env_logger::init();
     } else {
@@ -84,7 +79,6 @@ async fn main() -> Result<()> {
 }
 
 fn show_menu() {
-    // Procura o menu em vários lugares
     let paths = [
         "./menu.sh",
         "/opt/bsproxy/menu",
@@ -102,4 +96,3 @@ fn show_menu() {
     println!("❌ Menu não encontrado!");
     println!("Execute: /opt/bsproxy/menu");
 }
-EOF
