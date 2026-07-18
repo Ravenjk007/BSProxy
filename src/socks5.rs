@@ -1,11 +1,10 @@
-cat > src/socks5.rs << 'EOF'
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use anyhow::Result;
 use log::info;
 
 pub async fn handle_socks5(mut client: TcpStream) -> Result<()> {
-    info!("🔐 SOCKS5");
+    info!("🔐 SOCKS5 handshake");
     
     let mut header = [0u8; 2];
     client.read_exact(&mut header).await?;
@@ -49,7 +48,7 @@ pub async fn handle_socks5(mut client: TcpStream) -> Result<()> {
         anyhow::bail!("Unsupported SOCKS command");
     }
 
-    info!("SOCKS5 -> {}", target_addr);
+    info!("SOCKS5 connecting to: {}", target_addr);
 
     match TcpStream::connect(&target_addr).await {
         Ok(remote) => {
@@ -81,4 +80,3 @@ async fn send_reply(client: &mut TcpStream, code: u8) -> std::io::Result<()> {
         .write_all(&[0x05, code, 0x00, 0x01, 0, 0, 0, 0, 0, 0])
         .await
 }
-EOF
