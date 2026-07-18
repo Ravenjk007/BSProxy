@@ -1,24 +1,20 @@
-mkdir -p src
-cat > src/main.rs << 'EOF'
 mod socks5;
 mod tls;
 mod websocket;
 mod tcp_fallback;
-mod security;
 
 use tokio::net::TcpListener;
 use tokio::io::AsyncReadExt;
 use clap::Parser;
 use anyhow::Result;
 use log::{info, error};
-use std::process::Command;
 
 #[derive(Parser)]
 #[command(name = "bsproxy")]
 #[command(about = "Multiprotocol proxy server")]
 struct Cli {
-    #[arg(short = 'p', long = "port", default_value = "")]
-    port: String,
+    #[arg(short = 'p', long = "port", default_value = "8080")]
+    port: u16,
     #[arg(short = 'd', long = "debug")]
     debug: bool,
 }
@@ -26,11 +22,6 @@ struct Cli {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
-    
-    if cli.port.is_empty() {
-        show_menu();
-        return Ok(());
-    }
     
     if cli.debug {
         env_logger::init();
@@ -64,9 +55,6 @@ async fn main() -> Result<()> {
                             if data_str.starts_with("GET ") || data_str.starts_with("HTTP/") {
                                 info!("🌐 WebSocket");
                                 let _ = websocket::handle_websocket(socket).await;
-                            } else if data_str.starts_with("SECURITY") || data_str.starts_with("AUTH") {
-                                info!("🔐 SECURITY");
-                                let _ = security::handle_security(socket).await;
                             } else {
                                 info!("📦 TCP");
                                 let _ = tcp_fallback::handle_tcp(socket).await;
@@ -74,31 +62,10 @@ async fn main() -> Result<()> {
                         }
                     }
                 }
-                Ok(_) => {
-                    info!("📦 Connection closed");
-                }
+                Ok(_) => info!("Connection closed"),
                 Err(e) => error!("Peek error: {}", e),
             }
         });
     }
     Ok(())
 }
-
-fn show_menu() {
-    let paths = [
-        "/opt/bsproxy/menu",
-        "./menu.sh",
-        "/usr/local/bin/menu",
-    ];
-    
-    for path in paths {
-        if std::path::Path::new(path).exists() {
-            let _ = Command::new("bash")
-                .arg(path)
-                .status();
-            return;
-        }
-    }
-    println!("❌ Menu não encontrado!");
-}
-EOF
