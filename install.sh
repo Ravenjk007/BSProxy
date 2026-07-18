@@ -1,6 +1,5 @@
 #!/bin/bash
 # BSProxy Installer
-# ---->>>> Configure aqui o seu repositório
 REPO_URL="https://github.com/Ravenjk007/BSProxy.git"
 REPO_BRANCH="main"
 CMD_NAME="bsproxy"
@@ -71,7 +70,7 @@ else
     fi
     increment_step
 
-    show_progress "Compilando BSProxy, isso pode levar algum tempo dependendo da maquina..."
+    show_progress "Compilando BSProxy, isso pode levar algum tempo..."
     if [ -d "/root/BSProxy" ]; then
         rm -rf /root/BSProxy
     fi
@@ -85,7 +84,6 @@ else
     cd /root/BSProxy || error_exit "Diretório do BSProxy não encontrado"
     cargo build --release --jobs "$(nproc)" > /dev/null 2>&1 || error_exit "Falha ao compilar BSProxy"
     
-    # O binário se chama "bsproxy" (definido no Cargo.toml)
     if [ -f ./target/release/bsproxy ]; then
         mv ./target/release/bsproxy /opt/bsproxy/proxy || error_exit "Binário compilado não encontrado"
         chmod +x /opt/bsproxy/proxy
@@ -98,7 +96,6 @@ else
     chmod +x /opt/bsproxy/proxy
     [ -f /opt/bsproxy/menu ] && chmod +x /opt/bsproxy/menu
     
-    # Criar link simbólico para o comando
     if [ -f /opt/bsproxy/menu ]; then
         ln -sf /opt/bsproxy/menu /usr/local/bin/"$CMD_NAME"
     else
@@ -120,6 +117,7 @@ else
     echo "📡 Protocolos suportados:"
     echo "   - SOCKS5 (byte 0x05)"
     echo "   - TLS/SECURITY (byte 0x16)"
+    echo "   - WebSocket (GET / ou HTTP/)"
     echo "   - TCP Fallback (qualquer outro)"
     echo ""
 fi
