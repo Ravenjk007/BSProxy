@@ -75,15 +75,15 @@ else
         rm -rf /root/BSProxy
     fi
     git clone --branch "$REPO_BRANCH" "$REPO_URL" /root/BSProxy > /dev/null 2>&1 || error_exit "Falha ao clonar BSProxy"
-    
+
     if [ -f /root/BSProxy/menu.sh ]; then
         cp /root/BSProxy/menu.sh /opt/bsproxy/menu
         chmod +x /opt/bsproxy/menu
     fi
-    
+
     cd /root/BSProxy || error_exit "Diretório do BSProxy não encontrado"
     cargo build --release --jobs "$(nproc)" > /dev/null 2>&1 || error_exit "Falha ao compilar BSProxy"
-    
+
     if [ -f ./target/release/bsproxy ]; then
         mv ./target/release/bsproxy /opt/bsproxy/proxy || error_exit "Binário compilado não encontrado"
         chmod +x /opt/bsproxy/proxy
@@ -95,7 +95,7 @@ else
     show_progress "Configurando permissões..."
     chmod +x /opt/bsproxy/proxy
     [ -f /opt/bsproxy/menu ] && chmod +x /opt/bsproxy/menu
-    
+
     if [ -f /opt/bsproxy/menu ]; then
         ln -sf /opt/bsproxy/menu /usr/local/bin/"$CMD_NAME"
     else
@@ -109,7 +109,7 @@ else
     increment_step
 
     echo ""
-    echo "✅ Instalação concluída com sucesso!"
+    echo -e "\033[0;32m✅ Instalação concluída com sucesso!\033[0m"
     echo ""
     echo "🚀 Digite '$CMD_NAME' para acessar o menu."
     echo "   Ou 'bsproxy -p 80' para abrir porta 80 diretamente."
@@ -118,6 +118,7 @@ else
     echo "   - SOCKS5 (byte 0x05)"
     echo "   - TLS/SECURITY (byte 0x16)"
     echo "   - WebSocket (GET / ou HTTP/)"
+    echo "   - SECURITY (AUTH ou SECURITY)"
     echo "   - TCP Fallback (qualquer outro)"
     echo ""
 fi
