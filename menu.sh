@@ -1,6 +1,7 @@
+cat > menu.sh << 'EOF'
 #!/bin/bash
 
-BSPROXY="./target/release/bsproxy"
+BSPROXY="/usr/local/bin/bsproxy"
 PID_FILE="/tmp/bsproxy_"
 LOG_FILE="/tmp/bsproxy_"
 
@@ -11,11 +12,29 @@ show_menu() {
     echo "====================================="
     echo "          BSPROXY                    "
     echo ""
-    echo "Porta(s): 80"
+    
+    # Verificar portas abertas
+    ACTIVE_PORTS=""
+    for pidfile in ${PID_FILE}*.pid; do
+        if [ -f "$pidfile" ]; then
+            PORT=$(basename "$pidfile" .pid | sed 's/bsproxy_//')
+            if ps -p $(cat "$pidfile") > /dev/null 2>&1; then
+                ACTIVE_PORTS="$ACTIVE_PORTS $PORT"
+            else
+                rm -f "$pidfile"
+            fi
+        fi
+    done
+    
+    if [ -n "$ACTIVE_PORTS" ]; then
+        echo "Porta(s) aberta(s):$ACTIVE_PORTS"
+    else
+        echo "Porta(s): nenhuma"
+    fi
     echo ""
     echo " 1 - Abrir Porta"
     echo " 2 - Fechar Porta"
-    echo " 8 - Salir"
+    echo " 3 - Sair"
     echo ""
     echo -n "--> Selecione uma opção: "
 }
@@ -23,7 +42,8 @@ show_menu() {
 open_port() {
     read -p "Digite o número da porta: " PORT
     if [[ -z "$PORT" ]]; then
-        echo "Porta inválida!"
+        echo "❌ Porta inválida!"
+        sleep 2
         return
     fi
     
@@ -37,11 +57,18 @@ open_port() {
     echo "🔓 Abrindo porta ${PORT} com multiprotocolo..."
     echo "   Protocols: SOCKS5 + TLS/SECURITY + TCP Fallback"
     
+    # Verificar se bsproxy existe
+    if [ ! -f "$BSPROXY" ]; then
+        echo "❌ bsproxy não encontrado! Execute ./install.sh primeiro"
+        sleep 3
+        return
+    fi
+    
     # Iniciar o bsproxy com a porta
     nohup ${BSPROXY} -p ${PORT} > "${LOG_FILE}${PORT}.log" 2>&1 &
     echo $! > "${PID_FILE}${PORT}.pid"
     
-    sleep 1
+    sleep 2
     if ps -p $(cat "${PID_FILE}${PORT}.pid") > /dev/null 2>&1; then
         echo "✅ Porta ${PORT} aberta com sucesso!"
         echo "📋 Log: ${LOG_FILE}${PORT}.log"
@@ -58,7 +85,8 @@ open_port() {
 close_port() {
     read -p "Digite o número da porta: " PORT
     if [[ -z "$PORT" ]]; then
-        echo "Porta inválida!"
+        echo "❌ Porta inválida!"
+        sleep 2
         return
     fi
     
@@ -80,7 +108,7 @@ while true; do
     case $OPTION in
         1) open_port ;;
         2) close_port ;;
-        8) 
+        3) 
             echo "👋 Saindo..."
             exit 0
             ;;
@@ -90,3 +118,6 @@ while true; do
             ;;
     esac
 done
+EOF
+
+chmod +x menu.sh
