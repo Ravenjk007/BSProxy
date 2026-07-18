@@ -1,4 +1,3 @@
-cat > src/socks5.rs << 'EOF'
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use anyhow::Result;
@@ -7,7 +6,6 @@ use log::info;
 pub async fn handle_socks5(mut client: TcpStream) -> Result<()> {
     info!("🔐 SOCKS5 handshake");
     
-    // Etapa 1: negociação do método de autenticação
     let mut header = [0u8; 2];
     client.read_exact(&mut header).await?;
     let nmethods = header[1] as usize;
@@ -15,10 +13,8 @@ pub async fn handle_socks5(mut client: TcpStream) -> Result<()> {
     let mut methods = vec![0u8; nmethods];
     client.read_exact(&mut methods).await?;
 
-    // Responder sem autenticação (0x00)
     client.write_all(&[0x05, 0x00]).await?;
 
-    // Etapa 2: requisição de conexão
     let mut req = [0u8; 4];
     client.read_exact(&mut req).await?;
     let cmd = req[1];
@@ -94,4 +90,3 @@ async fn send_reply(client: &mut TcpStream, code: u8) -> std::io::Result<()> {
         .write_all(&[0x05, code, 0x00, 0x01, 0, 0, 0, 0, 0, 0])
         .await
 }
-EOF
