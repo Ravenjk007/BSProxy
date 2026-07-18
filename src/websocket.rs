@@ -1,4 +1,3 @@
-cat > src/websocket.rs << 'EOF'
 use tokio::net::TcpStream;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use anyhow::Result;
@@ -38,7 +37,6 @@ pub async fn handle(mut socket: TcpStream) -> Result<()> {
     socket.write_all(response.as_bytes()).await?;
     info!("🌐 WebSocket handshake complete!");
     
-    // Echo simples
     loop {
         let mut header = [0u8; 2];
         match socket.read_exact(&mut header).await {
@@ -116,4 +114,3 @@ fn generate_accept_key(key: &str) -> String {
     let result = hasher.finalize();
     BASE64.encode(&result)
 }
-EOF
