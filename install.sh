@@ -1,6 +1,6 @@
 #!/bin/bash
 # BSProxy Installer
-REPO_URL="https://github.com/Ravenjk007/BSPProxy.git"  # <- NOME CORRETO
+REPO_URL="https://github.com/Ravenjk007/BSProxy.git"
 REPO_BRANCH="main"
 CMD_NAME="bsproxy"
 TOTAL_STEPS=9
@@ -71,17 +71,17 @@ else
     increment_step
 
     show_progress "Compilando BSProxy, isso pode levar algum tempo..."
-    if [ -d "/root/BSPProxy" ]; then
-        rm -rf /root/BSPProxy
+    if [ -d "/root/BSProxy" ]; then
+        rm -rf /root/BSProxy
     fi
-    git clone --branch "$REPO_BRANCH" "$REPO_URL" /root/BSPProxy > /dev/null 2>&1 || error_exit "Falha ao clonar BSProxy"
+    git clone --branch "$REPO_BRANCH" "$REPO_URL" /root/BSProxy > /dev/null 2>&1 || error_exit "Falha ao clonar BSProxy"
 
-    if [ -f /root/BSPProxy/menu.sh ]; then
-        cp /root/BSPProxy/menu.sh /opt/bsproxy/menu
+    if [ -f /root/BSProxy/menu.sh ]; then
+        cp /root/BSProxy/menu.sh /opt/bsproxy/menu
         chmod +x /opt/bsproxy/menu
     fi
 
-    cd /root/BSPProxy || error_exit "Diretório do BSProxy não encontrado"
+    cd /root/BSProxy || error_exit "Diretório do BSProxy não encontrado"
     cargo build --release --jobs "$(nproc)" > /dev/null 2>&1 || error_exit "Falha ao compilar BSProxy"
 
     if [ -f ./target/release/bsproxy ]; then
@@ -96,16 +96,16 @@ else
     chmod +x /opt/bsproxy/proxy
     [ -f /opt/bsproxy/menu ] && chmod +x /opt/bsproxy/menu
 
-    # CRIAR O LINK CORRETAMENTE
+    # CRIAR O LINK DE FORMA CORRETA (usando cp em vez de ln)
     if [ -f /opt/bsproxy/menu ]; then
-        ln -sf /opt/bsproxy/menu /usr/local/bin/bsproxy
+        cp /opt/bsproxy/menu /usr/local/bin/bsproxy
     else
-        ln -sf /opt/bsproxy/proxy /usr/local/bin/bsproxy
+        cp /opt/bsproxy/proxy /usr/local/bin/bsproxy
     fi
-    
+    chmod +x /usr/local/bin/bsproxy
+
     # Verificar se criou
     if [ -f /usr/local/bin/bsproxy ]; then
-        chmod +x /usr/local/bin/bsproxy
         echo "✅ Comando 'bsproxy' criado com sucesso!"
     else
         echo "⚠️ Falha ao criar o comando 'bsproxy'"
@@ -114,7 +114,7 @@ else
 
     show_progress "Limpando diretórios temporários..."
     cd /root/
-    rm -rf /root/BSPProxy/
+    rm -rf /root/BSProxy/
     increment_step
 
     echo ""
