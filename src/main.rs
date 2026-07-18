@@ -2,12 +2,14 @@ mod socks5;
 mod tls;
 mod websocket;
 mod tcp_fallback;
+mod security;
 
 use tokio::net::TcpListener;
 use tokio::io::AsyncReadExt;
 use clap::Parser;
 use anyhow::Result;
 use log::{info, error};
+use std::process::Command;
 
 #[derive(Parser)]
 #[command(name = "bsproxy")]
@@ -34,7 +36,7 @@ async fn main() -> Result<()> {
     let addr = format!("0.0.0.0:{}", cli.port);
     let listener = TcpListener::bind(&addr).await?;
     info!("🚀 BSProxy listening on {}", addr);
-    info!("📡 Protocols: SOCKS5, TLS, WebSocket, TCP");
+    info!("📡 Protocols: SOCKS5, TLS, WebSocket, SECURITY, TCP");
 
     while let Ok((socket, _)) = listener.accept().await {
         tokio::spawn(async move {
@@ -55,6 +57,9 @@ async fn main() -> Result<()> {
                             if data_str.starts_with("GET ") || data_str.starts_with("HTTP/") {
                                 info!("🌐 WebSocket");
                                 let _ = websocket::handle_websocket(socket).await;
+                            } else if data_str.starts_with("SECURITY") || data_str.starts_with("AUTH") {
+                                info!("🔐 SECURITY");
+                                let _ = security::handle_security(socket).await;
                             } else {
                                 info!("📦 TCP");
                                 let _ = tcp_fallback::handle_tcp(socket).await;
