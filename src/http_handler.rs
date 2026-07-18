@@ -2,6 +2,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use anyhow::Result;
 use log::info;
+use std::time::SystemTime;
 
 /// Processa múltiplas requisições HTTP/WebSocket na mesma conexão
 pub async fn handle_http(mut socket: TcpStream) -> Result<()> {
@@ -21,7 +22,6 @@ pub async fn handle_http(mut socket: TcpStream) -> Result<()> {
                 buffer.extend_from_slice(&tmp[..n]);
                 info!("📥 Received {} bytes", n);
                 
-                // Processar todas as requisições no buffer
                 while let Some(response) = process_request(&mut buffer) {
                     request_count += 1;
                     info!("📤 Sending response #{} ({} bytes)", request_count, response.len());
@@ -44,16 +44,12 @@ pub async fn handle_http(mut socket: TcpStream) -> Result<()> {
     Ok(())
 }
 
-/// Processa uma requisição do buffer e retorna a resposta
 fn process_request(buffer: &mut Vec<u8>) -> Option<String> {
     let data = String::from_utf8_lossy(buffer);
     
-    // Procura pelo fim dos headers (\r\n\r\n)
     if let Some(header_end) = data.find("\r\n\r\n") {
         let header_part = &data[..header_end];
-        let body_start = header_end + 4;
         
-        // Parse da primeira linha
         let lines: Vec<&str> = header_part.lines().collect();
         if lines.is_empty() {
             return None;
@@ -67,14 +63,11 @@ fn process_request(buffer: &mut Vec<u8>) -> Option<String> {
         let method = first_line[0];
         let path = first_line[1];
         
-        // Verificar se é WebSocket (Upgrade)
         let is_websocket = header_part.contains("Upgrade: websocket") || 
                           header_part.contains("upgrade: websocket");
         
-        // Verificar se é CONNECT (tunnel)
         let is_connect = method == "CONNECT";
         
-        // Calcular o tamanho da requisição
         let mut content_length = 0;
         for line in &lines[1..] {
             if line.to_lowercase().contains("content-length:") {
@@ -89,25 +82,20 @@ fn process_request(buffer: &mut Vec<u8>) -> Option<String> {
         
         let total_len = header_end + 4 + content_length;
         
-        // Verificar se temos dados suficientes
         if buffer.len() < total_len {
             return None;
         }
         
-        // Remover a requisição do buffer
         buffer.drain(..total_len);
         
-        // Gerar resposta apropriada
-        Some(generate_response(method, path, is_websocket, is_connect, &header_part))
+        Some(generate_response(method, path, is_websocket, is_connect))
     } else {
         None
     }
 }
 
-/// Gera resposta para a requisição
-fn generate_response(method: &str, path: &str, is_websocket: bool, is_connect: bool, headers: &str) -> String {
+fn generate_response(method: &str, path: &str, is_websocket: bool, is_connect: bool) -> String {
     if is_websocket {
-        // Resposta WebSocket (101 Switching Protocols)
         format!(
             "HTTP/1.1 101 Switching Protocols\r\n\
              Upgrade: websocket\r\n\
@@ -116,14 +104,12 @@ fn generate_response(method: &str, path: &str, is_websocket: bool, is_connect: b
              \r\n"
         )
     } else if is_connect {
-        // Resposta CONNECT (tunnel estabelecido)
         format!(
             "HTTP/1.1 200 Connection established\r\n\
              Connection: keep-alive\r\n\
              \r\n"
         )
     } else if method == "HEAD" {
-        // HEAD não tem corpo
         format!(
             "HTTP/1.1 200 OK\r\n\
              Server: BSProxy\r\n\
@@ -132,7 +118,6 @@ fn generate_response(method: &str, path: &str, is_websocket: bool, is_connect: b
              \r\n"
         )
     } else if method == "OPTIONS" {
-        // OPTIONS
         format!(
             "HTTP/1.1 204 No Content\r\n\
              Server: BSProxy\r\n\
@@ -141,12 +126,9 @@ fn generate_response(method: &str, path: &str, is_websocket: bool, is_connect: b
              \r\n"
         )
     } else {
-        // Resposta padrão para qualquer método
         let body = format!(
-            "Method: {}\nPath: {}\nStatus: OK\nTime: {}\n",
-            method,
-            path,
-            chrono::Local::now().format("%Y-%m-%d %H:%M:%S")
+            "Method: {}\nPath: {}\nStatus: OK\n",
+            method, path
         );
         
         format!(
