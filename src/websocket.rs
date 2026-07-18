@@ -3,6 +3,7 @@ use tokio::net::TcpStream;
 use anyhow::Result;
 use log::info;
 
+/// Lê e descarta os headers HTTP até encontrar \r\n\r\n
 async fn consume_http_headers(socket: &mut TcpStream) -> std::io::Result<()> {
     let mut buf: Vec<u8> = Vec::new();
     let mut tmp = [0u8; 1];
@@ -22,10 +23,12 @@ async fn consume_http_headers(socket: &mut TcpStream) -> std::io::Result<()> {
 }
 
 pub async fn handle_websocket(mut socket: TcpStream) -> Result<()> {
-    info!("🌐 WebSocket handshake...");
+    info!("🌐 WebSocket/HTTP handshake...");
     
+    // Consumir headers HTTP (qualquer método)
     consume_http_headers(&mut socket).await?;
     
+    // Resposta de upgrade WebSocket (101 Switching Protocols)
     let response = "HTTP/1.1 101 Switching Protocols\r\n\
                     Upgrade: websocket\r\n\
                     Connection: Upgrade\r\n\
@@ -35,7 +38,7 @@ pub async fn handle_websocket(mut socket: TcpStream) -> Result<()> {
     socket.write_all(response.as_bytes()).await?;
     info!("🌐 WebSocket handshake complete! Encaminhando para SSH...");
     
-    // Encaminhar para SSH
+    // Encaminhar para SSH (porta 22)
     let target = "127.0.0.1:22";
     
     match TcpStream::connect(target).await {
