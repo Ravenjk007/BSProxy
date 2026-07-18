@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ============================================
-# BS.          BSProxy Menu - Free
+# BSProxy Menu - Free
 # ============================================
 
 BSPROXY="/opt/bsproxy/proxy"
@@ -47,6 +47,15 @@ is_port_in_use() {
     return 1
 }
 
+# Função para verificar certificado SSL
+check_ssl_cert() {
+    if [ -f "/opt/bsproxy/cert.pem" ] && [ -f "/opt/bsproxy/cert.key" ]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
 # Função para abrir porta
 open_port() {
     echo ""
@@ -56,6 +65,24 @@ open_port() {
         echo -e "${RED}❌ Porta inválida!${NC}"
         sleep 2
         return
+    fi
+    
+    # Verificação especial para porta 443
+    if [[ "$PORT" == "443" ]]; then
+        echo -e "${YELLOW}⚠️ Porta 443 (HTTPS/TLS) requer certificado SSL!${NC}"
+        if ! check_ssl_cert; then
+            echo -e "${RED}❌ Certificado SSL não encontrado!${NC}"
+            echo -e "   Gerando certificado self-signed para teste..."
+            openssl req -x509 -newkey rsa:4096 -keyout /opt/bsproxy/cert.key -out /opt/bsproxy/cert.pem -days 365 -nodes -subj "/CN=localhost" 2>/dev/null
+            chmod 644 /opt/bsproxy/cert.pem
+            chmod 600 /opt/bsproxy/cert.key
+            echo -e "${GREEN}✅ Certificado self-signed gerado!${NC}"
+            echo -e "${YELLOW}⚠️ Aviso: Clientes verão erro de certificado inválido${NC}"
+            echo -e "   Para um certificado real: certbot certonly --standalone -d seu-dominio.com"
+            sleep 3
+        else
+            echo -e "${GREEN}✅ Certificado SSL encontrado!${NC}"
+        fi
     fi
     
     if is_port_in_use $PORT; then
@@ -87,6 +114,13 @@ open_port() {
         echo -e "   ${YELLOW}TLS:${NC} openssl s_client -connect localhost:${PORT}"
         echo -e "   ${YELLOW}SECURITY:${NC} echo 'SECURITY test' | nc localhost ${PORT}"
         echo -e "   ${YELLOW}TCP:${NC} telnet localhost ${PORT}"
+        
+        if [[ "$PORT" == "443" ]]; then
+            echo ""
+            echo -e "${YELLOW}🔒 Teste HTTPS:${NC}"
+            echo -e "   curl -k https://localhost:${PORT}"
+            echo -e "   wscat -c wss://localhost:${PORT}"
+        fi
     else
         echo -e "${RED}❌ Falha ao abrir porta ${PORT}!${NC}"
         rm -f "${PID_FILE}${PORT}.pid"
@@ -178,6 +212,67 @@ view_log() {
     fi
 }
 
+# Função para gerenciar certificado SSL
+manage_cert() {
+    echo ""
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${YELLOW}  GERENCIAR CERTIFICADO SSL${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo -e " ${GREEN}[1]${NC} - Ver certificado atual"
+    echo -e " ${GREEN}[2]${NC} - Gerar certificado self-signed"
+    echo -e " ${GREEN}[3]${NC} - Instalar certificado real (Let's Encrypt)"
+    echo -e " ${GREEN}[4]${NC} - Voltar"
+    echo ""
+    echo -n "🔍 Escolha uma opção: "
+    read CERT_OPTION
+    
+    case $CERT_OPTION in
+        1)
+            echo ""
+            if check_ssl_cert; then
+                echo -e "${GREEN}✅ Certificado encontrado:${NC}"
+                openssl x509 -in /opt/bsproxy/cert.pem -text -noout | grep -E "Subject:|Issuer:|Not Before|Not After"
+            else
+                echo -e "${RED}❌ Nenhum certificado encontrado!${NC}"
+            fi
+            echo ""
+            read -p "Pressione ENTER para voltar..."
+            ;;
+        2)
+            echo ""
+            echo -e "${YELLOW}📦 Gerando certificado self-signed...${NC}"
+            openssl req -x509 -newkey rsa:4096 -keyout /opt/bsproxy/cert.key -out /opt/bsproxy/cert.pem -days 365 -nodes -subj "/CN=localhost" 2>/dev/null
+            chmod 644 /opt/bsproxy/cert.pem
+            chmod 600 /opt/bsproxy/cert.key
+            echo -e "${GREEN}✅ Certificado self-signed gerado em /opt/bsproxy/${NC}"
+            sleep 2
+            ;;
+        3)
+            echo ""
+            read -p "Digite seu domínio (ex: exemplo.com): " DOMAIN
+            if [[ -z "$DOMAIN" ]]; then
+                echo -e "${RED}❌ Domínio inválido!${NC}"
+                sleep 2
+                return
+            fi
+            echo -e "${YELLOW}🔒 Obtendo certificado real para $DOMAIN...${NC}"
+            certbot certonly --standalone -d "$DOMAIN" -d "www.$DOMAIN" --non-interactive --agree-tos --email admin@"$DOMAIN"
+            if [ -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
+                cp "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" /opt/bsproxy/cert.pem
+                cp "/etc/letsencrypt/live/$DOMAIN/privkey.pem" /opt/bsproxy/cert.key
+                chmod 644 /opt/bsproxy/cert.pem
+                chmod 600 /opt/bsproxy/cert.key
+                echo -e "${GREEN}✅ Certificado real instalado com sucesso!${NC}"
+            else
+                echo -e "${RED}❌ Falha ao obter certificado!${NC}"
+            fi
+            sleep 2
+            ;;
+        *) return ;;
+    esac
+}
+
 # Função principal de menu
 show_menu() {
     clear
@@ -194,11 +289,20 @@ show_menu() {
     fi
     echo ""
     
+    # Verificar certificado
+    if check_ssl_cert; then
+        echo -e "${GREEN}✅ Certificado SSL:${NC} Instalado"
+    else
+        echo -e "${RED}❌ Certificado SSL:${NC} Não instalado (porta 443 não funcionará)"
+    fi
+    echo ""
+    
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${GREEN}[01]${NC} - ${YELLOW}ABRIR PORTA${NC}"
     echo -e "${GREEN}[02]${NC} - ${YELLOW}FECHAR PORTA${NC}"
     echo -e "${GREEN}[03]${NC} - ${YELLOW}REINICIAR PORTA${NC}"
     echo -e "${GREEN}[04]${NC} - ${YELLOW}VER LOG DA PORTA${NC}"
+    echo -e "${GREEN}[05]${NC} - ${YELLOW}GERENCIAR CERTIFICADO SSL${NC}"
     echo -e "${GREEN}[80]${NC} - ${RED}SAIR${NC}"
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
@@ -217,6 +321,7 @@ while true; do
         2|02) close_port ;;
         3|03) restart_port ;;
         4|04) view_log ;;
+        5|05) manage_cert ;;
         80) 
             echo -e "${GREEN}👋 Saindo...${NC}"
             exit 0
