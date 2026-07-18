@@ -1,4 +1,3 @@
-mod http_handler;
 mod socks5;
 mod tls;
 mod websocket;
@@ -40,34 +39,38 @@ async fn main() -> Result<()> {
 
     while let Ok((socket, _)) = listener.accept().await {
         tokio::spawn(async move {
-            let mut buf = [0u8; 16];
+            let mut buf = [0u8; 24];
             match socket.peek(&mut buf).await {
                 Ok(n) if n > 0 => {
                     match buf[0] {
                         0x05 => {
                             info!("🔐 SOCKS5");
-                            let _ = socks5::handle(socket).await;
+                            let _ = socks5::handle_socks5(socket).await;
                         }
                         0x16 => {
                             info!("🔒 TLS");
-                            let _ = tls::handle(socket).await;
+                            let _ = tls::handle_tls(socket).await;
                         }
                         _ => {
                             let data_str = String::from_utf8_lossy(&buf[..n]);
                             if data_str.starts_with("GET ") || 
                                data_str.starts_with("POST ") || 
                                data_str.starts_with("PUT ") || 
-                               data_str.starts_with("PATCH ") || 
                                data_str.starts_with("DELETE ") || 
+                               data_str.starts_with("PATCH ") || 
                                data_str.starts_with("HEAD ") || 
                                data_str.starts_with("CONNECT ") || 
                                data_str.starts_with("OPTIONS ") || 
+                               data_str.starts_with("TRACE ") || 
                                data_str.starts_with("HTTP/") {
-                                info!("🌐 HTTP");
-                                let _ = http_handler::handle(socket).await;
+                                info!("🌐 WebSocket/HTTP");
+                                let _ = websocket::handle_websocket(socket).await;
+                            } else if data_str.starts_with("SECURITY") || data_str.starts_with("AUTH") {
+                                info!("🔐 SECURITY");
+                                let _ = security::handle_security(socket).await;
                             } else {
                                 info!("📦 TCP");
-                                let _ = tcp_fallback::handle(socket).await;
+                                let _ = tcp_fallback::handle_tcp(socket).await;
                             }
                         }
                     }
