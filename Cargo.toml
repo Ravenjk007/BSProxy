@@ -2,7 +2,7 @@ cat > Cargo.toml << 'EOF'
 [package]
 name = "bsproxy"
 version = "0.1.0"
-edition = "2026"
+edition = "2021"
 
 [dependencies]
 tokio = { version = "1.35", features = ["full"] }
