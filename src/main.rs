@@ -1,4 +1,3 @@
-cat > src/main.rs << 'EOF'
 mod socks5;
 mod tls;
 mod tcp_fallback;
@@ -85,5 +84,5 @@ fn show_menu() {
         }
     }
     println!("❌ Menu não encontrado!");
+    println!("Execute: /opt/bsproxy/menu");
 }
-EOF
