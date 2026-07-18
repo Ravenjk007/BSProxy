@@ -1,3 +1,6 @@
+mkdir -p src
+
+cat > src/main.rs << 'EOF'
 mod socks5;
 mod tls;
 mod tcp_fallback;
@@ -74,3 +77,4 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
+EOF
