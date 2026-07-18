@@ -1,4 +1,3 @@
-cat > src/socks5.rs << 'EOF'
 use tokio::net::TcpStream;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use anyhow::Result;
@@ -61,4 +60,3 @@ async fn handle_connect(mut socket: TcpStream) -> Result<()> {
         }
     }
 }
-EOF
