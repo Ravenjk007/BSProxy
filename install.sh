@@ -1,8 +1,8 @@
 #!/bin/bash
 # BSProxy Installer
-REPO_URL="https://github.com/Ravenjk007/BSProxy.git"
+REPO_URL="https://github.com/Ravenjk007/BSPProxy.git"  # <- NOME CORRETO
 REPO_BRANCH="main"
-CMD_NAME="bsproxy"  # <- NOME CORRETO
+CMD_NAME="bsproxy"
 TOTAL_STEPS=9
 CURRENT_STEP=0
 
@@ -71,17 +71,17 @@ else
     increment_step
 
     show_progress "Compilando BSProxy, isso pode levar algum tempo..."
-    if [ -d "/root/BSProxy" ]; then
-        rm -rf /root/BSProxy
+    if [ -d "/root/BSPProxy" ]; then
+        rm -rf /root/BSPProxy
     fi
-    git clone --branch "$REPO_BRANCH" "$REPO_URL" /root/BSProxy > /dev/null 2>&1 || error_exit "Falha ao clonar BSProxy"
+    git clone --branch "$REPO_BRANCH" "$REPO_URL" /root/BSPProxy > /dev/null 2>&1 || error_exit "Falha ao clonar BSProxy"
 
-    if [ -f /root/BSProxy/menu.sh ]; then
-        cp /root/BSProxy/menu.sh /opt/bsproxy/menu
+    if [ -f /root/BSPProxy/menu.sh ]; then
+        cp /root/BSPProxy/menu.sh /opt/bsproxy/menu
         chmod +x /opt/bsproxy/menu
     fi
 
-    cd /root/BSProxy || error_exit "Diretório do BSProxy não encontrado"
+    cd /root/BSPProxy || error_exit "Diretório do BSProxy não encontrado"
     cargo build --release --jobs "$(nproc)" > /dev/null 2>&1 || error_exit "Falha ao compilar BSProxy"
 
     if [ -f ./target/release/bsproxy ]; then
@@ -96,17 +96,25 @@ else
     chmod +x /opt/bsproxy/proxy
     [ -f /opt/bsproxy/menu ] && chmod +x /opt/bsproxy/menu
 
-    # CRIAR O LINK COM O NOME CORRETO (bsproxy)
+    # CRIAR O LINK CORRETAMENTE
     if [ -f /opt/bsproxy/menu ]; then
         ln -sf /opt/bsproxy/menu /usr/local/bin/bsproxy
     else
         ln -sf /opt/bsproxy/proxy /usr/local/bin/bsproxy
     fi
+    
+    # Verificar se criou
+    if [ -f /usr/local/bin/bsproxy ]; then
+        chmod +x /usr/local/bin/bsproxy
+        echo "✅ Comando 'bsproxy' criado com sucesso!"
+    else
+        echo "⚠️ Falha ao criar o comando 'bsproxy'"
+    fi
     increment_step
 
     show_progress "Limpando diretórios temporários..."
     cd /root/
-    rm -rf /root/BSProxy/
+    rm -rf /root/BSPProxy/
     increment_step
 
     echo ""
