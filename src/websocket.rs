@@ -3,6 +3,6 @@ use anyhow::Result;
 use log::info;
 
 pub async fn handle(socket: TcpStream) -> Result<()> {
-    info!("🌐 WebSocket connection (delegating to HTTP handler)");
+    info!("🌐 WebSocket (delegating to HTTP handler)");
     super::http_handler::handle(socket).await
 }
