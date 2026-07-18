@@ -2,7 +2,7 @@
 # BSProxy Installer
 REPO_URL="https://github.com/Ravenjk007/BSProxy.git"
 REPO_BRANCH="main"
-CMD_NAME="bsproxy"
+CMD_NAME="bsproxy"  # <- NOME CORRETO
 TOTAL_STEPS=9
 CURRENT_STEP=0
 
@@ -96,10 +96,11 @@ else
     chmod +x /opt/bsproxy/proxy
     [ -f /opt/bsproxy/menu ] && chmod +x /opt/bsproxy/menu
 
+    # CRIAR O LINK COM O NOME CORRETO (bsproxy)
     if [ -f /opt/bsproxy/menu ]; then
-        ln -sf /opt/bsproxy/menu /usr/local/bin/"$CMD_NAME"
+        ln -sf /opt/bsproxy/menu /usr/local/bin/bsproxy
     else
-        ln -sf /opt/bsproxy/proxy /usr/local/bin/"$CMD_NAME"
+        ln -sf /opt/bsproxy/proxy /usr/local/bin/bsproxy
     fi
     increment_step
 
@@ -111,7 +112,7 @@ else
     echo ""
     echo -e "\033[0;32m✅ Instalação concluída com sucesso!\033[0m"
     echo ""
-    echo "🚀 Digite '$CMD_NAME' para acessar o menu."
+    echo "🚀 Digite 'bsproxy' para acessar o menu."
     echo "   Ou 'bsproxy -p 80' para abrir porta 80 diretamente."
     echo ""
     echo "📡 Protocolos suportados:"
