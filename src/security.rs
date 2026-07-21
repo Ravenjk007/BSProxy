@@ -1,25 +1,51 @@
-use tokio::net::TcpStream;
-use tokio_rustls::{TlsAcceptor, server::TlsStream};
-use rustls::{ServerConfig, Certificate, PrivateKey};
 use std::sync::Arc;
-use anyhow::Result;
-use rcgen::generate_simple_self_signed;
+use dashmap::DashMap;
+use log::{info, warn};
+use std::net::IpAddr;
+use tokio::time::{interval, Duration};
 
-pub async fn get_tls_acceptor() -> Result<TlsAcceptor> {
-    let cert = generate_simple_self_signed(vec!["localhost".to_string()])?;
-    let cert_der = cert.serialize_der()?;
-    let key_der = cert.serialize_private_key_der();
-    
-    let config = ServerConfig::builder()
-        .with_safe_defaults()
-        .with_no_client_auth()
-        .with_single_cert(vec![Certificate(cert_der)], PrivateKey(key_der))?;
-    
-    Ok(TlsAcceptor::from(Arc::new(config)))
+#[derive(Clone)]
+pub struct SecurityManager {
+    connections: Arc<DashMap<IpAddr, usize>>,
+    pub max_per_ip: usize,
 }
 
-pub async fn handle_tls_stream(socket: TcpStream) -> Result<TlsStream<TcpStream>> {
-    let acceptor = get_tls_acceptor().await?;
-    let tls_stream = acceptor.accept(socket).await?;
-    Ok(tls_stream)
+impl SecurityManager {
+    pub fn new() -> Self {
+        let manager = SecurityManager {
+            connections: Arc::new(DashMap::new()),
+            max_per_ip: 15,
+        };
+
+        // Limpeza periódica
+        let conns = manager.connections.clone();
+        tokio::spawn(async move {
+            let mut ticker = interval(Duration::from_secs(60));
+            loop {
+                ticker.tick().await;
+                conns.retain(|_, count| *count > 0);
+            }
+        });
+
+        manager
+    }
+
+    pub fn allow_connection(&self, ip: IpAddr) -> bool {
+        let entry = self.connections.entry(ip).or_insert(0);
+        if *entry < self.max_per_ip {
+            *entry += 1;
+            true
+        } else {
+            warn!("🚫 IP bloqueado por excesso de conexões: {}", ip);
+            false
+        }
+    }
+
+    pub fn release(&self, ip: IpAddr) {
+        if let Some(mut count) = self.connections.get_mut(&ip) {
+            if *count > 0 {
+                *count -= 1;
+            }
+        }
+    }
 }
