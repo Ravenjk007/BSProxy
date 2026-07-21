@@ -1,8 +1,11 @@
+cd /tmp/BSProxy
+
+cat > src/websocket.rs << 'EOF'
 use tokio::io::{AsyncReadExt, AsyncWriteExt, AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
 use tokio::time::{timeout, Duration};
 use anyhow::{Result, anyhow};
-use log::{info, warn, error};
+use log::{info, warn, error, debug};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -29,17 +32,14 @@ async fn consume_http_headers(socket: &mut TcpStream) -> std::io::Result<()> {
 fn detect_websocket_or_xhttp(data: &[u8]) -> (&str, bool) {
     let data_str = String::from_utf8_lossy(data);
     
-    // Verifica se é WebSocket
     if data_str.contains("Upgrade: websocket") || data_str.contains("Sec-WebSocket-Key") {
         return ("WEBSOCKET", true);
     }
     
-    // Verifica se é XHTTP (cabeçalhos customizados)
     if data_str.contains("X-") || data_str.contains("XHTTP") {
         return ("XHTTP", false);
     }
     
-    // HTTP normal
     if data_str.contains("GET /") || data_str.contains("POST /") || data_str.contains("CONNECT") {
         return ("HTTP", false);
     }
@@ -51,10 +51,8 @@ fn detect_websocket_or_xhttp(data: &[u8]) -> (&str, bool) {
 pub async fn handle_websocket(mut socket: TcpStream) -> Result<()> {
     info!("🌐 WebSocket/HTTP handshake...");
     
-    // Consumir headers HTTP
     consume_http_headers(&mut socket).await?;
     
-    // Resposta de upgrade WebSocket (101 Switching Protocols)
     let response = "HTTP/1.1 101 Switching Protocols\r\n\
                     Upgrade: websocket\r\n\
                     Connection: Upgrade\r\n\
@@ -65,7 +63,6 @@ pub async fn handle_websocket(mut socket: TcpStream) -> Result<()> {
     socket.write_all(response.as_bytes()).await?;
     info!("🌐 WebSocket handshake complete! Encaminhando para SSH...");
     
-    // Encaminhar para SSH (porta 22)
     let target = "127.0.0.1:22";
     
     match TcpStream::connect(target).await {
@@ -93,10 +90,8 @@ pub async fn handle_websocket(mut socket: TcpStream) -> Result<()> {
 pub async fn handle_websocket_ssl(mut socket: TcpStream) -> Result<()> {
     info!("🔒 WebSocket com SSL/TLS handshake...");
     
-    // Consumir headers HTTP
     consume_http_headers(&mut socket).await?;
     
-    // Resposta com SSL/TLS
     let response = "HTTP/1.1 101 Switching Protocols\r\n\
                     Upgrade: websocket\r\n\
                     Connection: Upgrade\r\n\
@@ -108,7 +103,6 @@ pub async fn handle_websocket_ssl(mut socket: TcpStream) -> Result<()> {
     socket.write_all(response.as_bytes()).await?;
     info!("🔒 WebSocket SSL handshake complete!");
     
-    // Encaminhar para SSH via TLS (porta 443)
     let target = "127.0.0.1:443";
     
     match TcpStream::connect(target).await {
@@ -146,17 +140,14 @@ pub async fn handle_xhttp(mut socket: TcpStream) -> Result<()> {
     let request = String::from_utf8_lossy(&buffer[..n]);
     info!("📨 XHTTP Request: {}", request.lines().next().unwrap_or(""));
     
-    // Detecta o tipo de requisição
-    let (protocol, is_websocket) = detect_websocket_or_xhttp(&buffer[..n]);
+    let (protocol, _is_websocket) = detect_websocket_or_xhttp(&buffer[..n]);
     info!("🔍 Protocolo detectado: {}", protocol);
     
-    if is_websocket {
-        // Se for WebSocket, redireciona
+    if _is_websocket {
         info!("🔄 Redirecionando para WebSocket handler");
         return handle_websocket(socket).await;
     }
     
-    // Resposta Multi-Status (207) com suporte a múltiplos protocolos
     let response = format!(
         "HTTP/1.1 207 Multi-Status\r\n\
          Content-Type: application/json\r\n\
@@ -178,11 +169,10 @@ pub async fn handle_xhttp(mut socket: TcpStream) -> Result<()> {
     socket.write_all(response.as_bytes()).await?;
     info!("✅ XHTTP Multi-Status (207) enviado");
     
-    // Tenta encaminhar para o backend
     let target = match protocol {
         "WEBSOCKET" => "127.0.0.1:8080",
         "XHTTP" => "127.0.0.1:8443",
-        _ => "127.0.0.1:22", // Fallback SSH
+        _ => "127.0.0.1:22",
     };
     
     info!("🔄 Encaminhando para {}", target);
@@ -202,7 +192,6 @@ pub async fn handle_xhttp(mut socket: TcpStream) -> Result<()> {
         }
         Err(e) => {
             warn!("⚠️ Falha ao conectar ao backend {}: {}", target, e);
-            // Continua vivo mesmo sem backend
             Ok(())
         }
     }
@@ -213,9 +202,8 @@ pub async fn handle_xhttp_ssl(mut socket: TcpStream) -> Result<()> {
     info!("🔒 XHTTP com SSL/TLS...");
     
     let mut buffer = [0u8; 4096];
-    let n = socket.read(&mut buffer).await?;
+    let _n = socket.read(&mut buffer).await?;
     
-    // Resposta com SSL
     let response = "HTTP/1.1 207 Multi-Status\r\n\
                     X-SSL: enabled\r\n\
                     X-Supported: SSL,SSH,WebSocket,XHTTP\r\n\
@@ -225,7 +213,6 @@ pub async fn handle_xhttp_ssl(mut socket: TcpStream) -> Result<()> {
     socket.write_all(response.as_bytes()).await?;
     info!("✅ XHTTP SSL Multi-Status (207) enviado");
     
-    // Encaminha para SSL backend
     let target = "127.0.0.1:443";
     
     match TcpStream::connect(target).await {
@@ -253,7 +240,6 @@ pub async fn handle_multi_protocol(mut socket: TcpStream) -> Result<()> {
     
     let mut buffer = [0u8; 4096];
     
-    // Tenta ler com timeout
     let n = match timeout(Duration::from_secs(5), socket.read(&mut buffer)).await {
         Ok(Ok(n)) => n,
         Ok(Err(e)) => return Err(anyhow!("Read error: {}", e)),
@@ -267,12 +253,8 @@ pub async fn handle_multi_protocol(mut socket: TcpStream) -> Result<()> {
         return Err(anyhow!("Empty request"));
     }
     
-    let (protocol, is_websocket) = detect_websocket_or_xhttp(&buffer[..n]);
+    let (protocol, _is_websocket) = detect_websocket_or_xhttp(&buffer[..n]);
     info!("🔍 Protocolo detectado: {}", protocol);
-    
-    // Precisamos reenviar os dados lidos
-    // Como já lemos, vamos criar um novo stream com os dados
-    // ou simplesmente rotear baseado no protocolo
     
     match protocol {
         "WEBSOCKET" => {
@@ -289,3 +271,4 @@ pub async fn handle_multi_protocol(mut socket: TcpStream) -> Result<()> {
         }
     }
 }
+EOF
