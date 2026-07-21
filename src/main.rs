@@ -1,148 +1,127 @@
 use std::env;
 use std::io::Error;
-use std::sync::Arc;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use std::time::Duration;
+
+use clap::Parser;
+use log::{error, info, warn};
+use tokio::io::copy_bidirectional;
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::Mutex;
-use tokio::{time::{Duration}};
 use tokio::time::timeout;
 
+mod protocol;
+mod security;
+mod socks5;
+mod ssh;
+mod tcp_fallback;
+mod tls;
+mod websocket;
+
+use protocol::ProtocolDetector;
+
+#[derive(Parser, Debug)]
+#[command(author, version, about)]
+struct Args {
+    /// Porta do servidor
+    #[arg(short, long, default_value_t = 80)]
+    port: u16,
+
+    /// Status message nos handshakes
+    #[arg(short, long, default_value = "@BSPROXY")]
+    status: String,
+
+    /// Tempo máximo de inatividade (segundos)
+    #[arg(long, default_value_t = 300)]
+    idle_timeout: u64,
+}
+
 #[tokio::main]
-async fn main() -> Result<(), Error> {
-    // Iniciando o proxy
-    let port = get_port();
-    let listener = TcpListener::bind(format!("[::]:{}", port)).await?;
-    println!("Iniciando serviço na porta: {}", port);
-    start_http(listener).await;
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    env_logger::init();
+    let args = Args::parse();
+
+    info!("🚀 BSPoxy v0.2.0 iniciando na porta {}", args.port);
+
+    let listener = TcpListener::bind(format!("[::]:{}", args.port)).await?;
+    info!("✅ Servidor ouvindo em [::]:{}", args.port);
+
+    start_proxy(listener, args).await;
     Ok(())
 }
 
-async fn start_http(listener: TcpListener) {
+async fn start_proxy(listener: TcpListener, args: Args) {
     loop {
         match listener.accept().await {
             Ok((client_stream, addr)) => {
+                info!("🔗 Nova conexão de {}", addr);
+                let args_clone = args.clone(); // Clone barato
+
                 tokio::spawn(async move {
-                    if let Err(e) = handle_client(client_stream).await {
-                        println!("Erro ao processar cliente {}: {}", addr, e);
+                    if let Err(e) = handle_client(client_stream, &args_clone).await {
+                        error!("❌ Erro ao processar {}: {}", addr, e);
                     }
                 });
             }
-            Err(e) => {
-                println!("Erro ao aceitar conexão: {}", e);
-            }
+            Err(e) => error!("Erro ao aceitar conexão: {}", e),
         }
     }
 }
 
-async fn handle_client(mut client_stream: TcpStream) -> Result<(), Error> {
-    let status = get_status();
-    client_stream
-        .write_all(format!("HTTP/1.1 101 {}\r\n\r\n", status).as_bytes())
+async fn handle_client(mut client: TcpStream, args: &Args) -> Result<(), Error> {
+    // Handshake inicial (padrão para proxies tipo SSH/SSL)
+    client
+        .write_all(format!("HTTP/1.1 101 {}\r\n\r\n", args.status).as_bytes())
         .await?;
 
-    let mut buffer = vec![0; 1024];
-    client_stream.read(&mut buffer).await?;
-    client_stream
-        .write_all(format!("HTTP/1.1 200 {}\r\n\r\n", status).as_bytes())
-        .await?;
+    // Pequeno delay para o cliente enviar dados
+    tokio::time::sleep(Duration::from_millis(200)).await;
 
-    let mut addr_proxy = "0.0.0.0:22";
-    let result = timeout(Duration::from_secs(1), peek_stream(&mut client_stream)).await
-        .unwrap_or_else(|_| Ok(String::new()));
-
-    if let Ok(data) = result {
-        if data.contains("SSH") || data.is_empty() {
-            addr_proxy = "0.0.0.0:22";
-        } else {
-            addr_proxy = "0.0.0.0:1194";
+    // Detectar protocolo
+    let backend = match timeout(Duration::from_secs(5), detect_protocol(&mut client)).await {
+        Ok(Ok(proto)) => proto,
+        Ok(Err(e)) => {
+            warn!("Falha na detecção: {}, usando fallback SSH", e);
+            "ssh".to_string()
         }
-    } else {
-        addr_proxy = "0.0.0.0:22";
-    }
+        Err(_) => {
+            info!("Timeout na detecção → fallback SSH");
+            "ssh".to_string()
+        }
+    };
 
-    let server_connect = TcpStream::connect(addr_proxy).await;
-    if server_connect.is_err() {
-        println!("erro ao iniciar conexão para o proxy ");
-        return Ok(());
-    }
+    let target_addr = match backend.as_str() {
+        "ssh" => "127.0.0.1:22",
+        "openvpn" | "ovpn" => "127.0.0.1:1194",
+        "socks5" => "127.0.0.1:1080",
+        _ => "127.0.0.1:22",
+    };
 
+    info!("🔀 Encaminhando para {} → {}", backend, target_addr);
 
+    let mut server = match TcpStream::connect(target_addr).await {
+        Ok(s) => s,
+        Err(e) => {
+            error!("❌ Falha ao conectar em {}: {}", target_addr, e);
+            return Ok(());
+        }
+    };
 
-    let server_stream = server_connect?;
+    // Bidirectional copy com timeout opcional
+    let _ = copy_bidirectional(&mut client, &mut server).await;
 
-    let (client_read, client_write) = client_stream.into_split();
-    let (server_read, server_write) = server_stream.into_split();
-
-    let client_read = Arc::new(Mutex::new(client_read));
-    let client_write = Arc::new(Mutex::new(client_write));
-    let server_read = Arc::new(Mutex::new(server_read));
-    let server_write = Arc::new(Mutex::new(server_write));
-
-    let client_to_server = transfer_data(client_read, server_write);
-    let server_to_client = transfer_data(server_read, client_write);
-
-    tokio::try_join!(client_to_server, server_to_client)?;
-
+    info!("✅ Conexão encerrada");
     Ok(())
 }
 
-async fn transfer_data(
-    read_stream: Arc<Mutex<tokio::net::tcp::OwnedReadHalf>>,
-    write_stream: Arc<Mutex<tokio::net::tcp::OwnedWriteHalf>>,
-) -> Result<(), Error> {
-    let mut buffer = [0; 8192];
-    loop {
-        let bytes_read = {
-            let mut read_guard = read_stream.lock().await;
-            read_guard.read(&mut buffer).await?
-        };
+async fn detect_protocol(stream: &mut TcpStream) -> Result<String, Error> {
+    let mut buffer = [0u8; 8192];
+    let n = stream.peek(&mut buffer).await?;
 
-        if bytes_read == 0 {
-            break;
-        }
-
-        let mut write_guard = write_stream.lock().await;
-        write_guard.write_all(&buffer[..bytes_read]).await?;
+    if n == 0 {
+        return Ok("ssh".to_string());
     }
 
-    Ok(())
-}
+    let data = &buffer[..n];
 
-async fn peek_stream(stream: &TcpStream) -> Result<String, Error> {
-    let mut peek_buffer = vec![0; 8192];
-    let bytes_peeked = stream.peek(&mut peek_buffer).await?;
-    let data = &peek_buffer[..bytes_peeked];
-    let data_str = String::from_utf8_lossy(data);
-    Ok(data_str.to_string())
-}
-
-
-fn get_port() -> u16 {
-    let args: Vec<String> = env::args().collect();
-    let mut port = 80;
-
-    for i in 1..args.len() {
-        if args[i] == "--port" {
-            if i + 1 < args.len() {
-                port = args[i + 1].parse().unwrap_or(80);
-            }
-        }
-    }
-
-    port
-}
-
-fn get_status() -> String {
-    let args: Vec<String> = env::args().collect();
-    let mut status = String::from("SSHPRO");
-
-    for i in 1..args.len() {
-        if args[i] == "--status" {
-            if i + 1 < args.len() {
-                status = args[i + 1].clone();
-            }
-        }
-    }
-
-    status
+    // Delegar para módulo de detecção (recomendado)
+    Ok(ProtocolDetector::detect(data))
 }
