@@ -1,6 +1,14 @@
-mod websocket;
-mod protocol;
-mod tls;
-mod ssh;
-mod security;
-mod tcp_fallback;
+[package]
+name = "bsproxy"
+version = "0.4.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+env_logger = "0.11"
+log = "0.4"
+clap = { version = "4.5", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.8"
+bytes = "1.6"
+dashmap = "6.0"        # Para métricas thread-safe
