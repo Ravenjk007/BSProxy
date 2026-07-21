@@ -134,7 +134,7 @@ fn get_port() -> u16 {
 
 fn get_status() -> String {
     let args: Vec<String> = env::args().collect();
-    let mut status = String::from("@BsproxyManager");
+    let mut status = String::from("WebSocket");
 
     for i in 1..args.len() {
         if args[i] == "--status" {
