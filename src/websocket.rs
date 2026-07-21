@@ -1,42 +1,94 @@
-use tokio::io::{AsyncRead, AsyncWrite, AsyncReadExt, AsyncWriteExt, copy_bidirectional};
-use tokio::net::TcpStream;
-use anyhow::Result;
-use sha1::{Sha1, Digest};
-use base64::{engine::general_purpose, Engine as _};
+use tokio_tungstenite::{accept_async, tungstenite::Message};
+use futures_util::{StreamExt, SinkExt};
+use http::{Request, Response, StatusCode};
+use serde_json::json;
 
-pub async fn handle_websocket_stream<S>(mut stream: S, target_addr: &str) -> Result<()> 
-where S: AsyncRead + AsyncWrite + Unpin 
-{
-    let mut buffer = [0u8; 4096];
-    let n = stream.read(&mut buffer).await?;
-    let request = String::from_utf8_lossy(&buffer[..n]);
+pub struct WebSocketHandler {
+    xhttp_support: bool,
+    multistatus_support: bool,
+}
 
-    if request.contains("Upgrade: websocket") {
-        let mut key = "";
-        for line in request.lines() {
-            if line.to_lowercase().starts_with("sec-websocket-key:") {
-                key = line.split(':').nth(1).unwrap_or("").trim();
-                break;
+impl WebSocketHandler {
+    pub fn new() -> Self {
+        Self {
+            xhttp_support: true,
+            multistatus_support: true,
+        }
+    }
+
+    pub async fn handle_websocket<T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin>(
+        &self,
+        stream: T,
+    ) -> Result<(), anyhow::Error> {
+        let ws_stream = accept_async(stream).await?;
+        let (mut sender, mut receiver) = ws_stream.split();
+
+        log::info!("WebSocket connection established");
+
+        while let Some(msg) = receiver.next().await {
+            let msg = msg?;
+            
+            match msg {
+                Message::Text(text) => {
+                    // Suporte a XHTTP
+                    if self.xhttp_support {
+                        self.handle_xhttp(&text).await?;
+                    }
+                    
+                    // Resposta com Multistatus (207)
+                    if self.multistatus_support {
+                        let response = self.create_multistatus_response()?;
+                        sender.send(Message::Text(response)).await?;
+                    }
+                }
+                Message::Binary(data) => {
+                    // Processar dados binários
+                    log::debug!("Received binary data: {} bytes", data.len());
+                }
+                _ => {}
             }
         }
 
-        let mut hasher = Sha1::new();
-        hasher.update(key.as_bytes());
-        hasher.update(b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11");
-        let result = hasher.finalize();
-        let accept_key = general_purpose::STANDARD.encode(result);
-
-        let response = format!(
-            "HTTP/1.1 101 Switching Protocols\r\n\
-             Upgrade: websocket\r\n\
-             Connection: Upgrade\r\n\
-             Sec-WebSocket-Accept: {}\r\n\r\n",
-            accept_key
-        );
-        stream.write_all(response.as_bytes()).await?;
+        Ok(())
     }
 
-    let mut server_stream = TcpStream::connect(target_addr).await?;
-    copy_bidirectional(&mut stream, &mut server_stream).await?;
-    Ok(())
+    async fn handle_xhttp(&self, data: &str) -> Result<(), anyhow::Error> {
+        log::info!("XHTTP request: {}", data);
+        
+        // Parse do cabeçalho XHTTP
+        if data.contains("X-") {
+            // Processar cabeçalhos customizados
+            // Exemplo: X-Forwarded-For, X-Real-IP, etc.
+        }
+        
+        Ok(())
+    }
+
+    fn create_multistatus_response(&self) -> Result<String, anyhow::Error> {
+        // Resposta 207 Multi-Status
+        let response = json!({
+            "status": 207,
+            "message": "Multi-Status",
+            "data": {
+                "protocols": ["SSL", "SSH", "WebSocket", "XHTTP"],
+                "ports": [443, 80, 8080],
+                "status": "connected"
+            }
+        });
+        
+        Ok(response.to_string())
+    }
+
+    pub async fn handle_xhttp_connection<T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin>(
+        &self,
+        stream: T,
+    ) -> Result<(), anyhow::Error> {
+        // Handler específico para XHTTP na porta 443
+        log::info!("XHTTP connection on port 443");
+        
+        // Processar requisições HTTP/HTTPS customizadas
+        // Implementar gateway para outros serviços
+        
+        Ok(())
+    }
 }
