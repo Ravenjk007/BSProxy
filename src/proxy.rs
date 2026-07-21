@@ -1,83 +1,68 @@
-use tokio::net::TcpStream;
-use tokio::io::{AsyncReadExt, AsyncWriteExt, copy_bidirectional};
-use std::error::Error;
-use crate::tls::{handle_tls_stream, get_tls_acceptor};
-use crate::websocket::handle_websocket_stream;
-use tokio::time::{timeout, Duration};
+use crate::protocol::{MultiProtocolHandler, ProtocolDetector};
+use crate::tls::TLSHandler;
+use crate::ssh::SSHHandler;
+use crate::websocket::WebSocketHandler;
+use crate::xhttp::XHTTPHandler;
 
-pub async fn handle_connection(mut client_stream: TcpStream, target_addr: &str, _protocol: &str, status: &str) -> Result<(), Box<dyn Error>> {
-    let mut buffer = [0u8; 1024];
-    
-    // Suporte Multi-Status
-    let status_to_send = if status.contains('|') {
-        status.split('|').next().unwrap_or("200 OK")
-    } else {
-        status
-    };
+pub struct Proxy {
+    port: u16,
+    multi_protocol: bool,
+    ssl_support: bool,
+    ssh_support: bool,
+    websocket_support: bool,
+    xhttp_support: bool,
+}
 
-    // Tentar ler o início da conexão (peek) para detectar protocolo
-    let n = match timeout(Duration::from_millis(500), client_stream.peek(&mut buffer)).await {
-        Ok(Ok(n)) => n,
-        _ => 0,
-    };
-
-    // 1. Detecção de TLS (Handshake começa com 0x16)
-    if n > 0 && buffer[0] == 0x16 {
-        let acceptor = get_tls_acceptor().await?;
-        let mut tls_stream = acceptor.accept(client_stream).await?;
-        
-        let mut inner_buffer = [0u8; 1024];
-        let ni = match timeout(Duration::from_millis(500), tls_stream.read(&mut inner_buffer)).await {
-            Ok(Ok(ni)) => ni,
-            _ => 0,
-        };
-        
-        let inner_request = String::from_utf8_lossy(&inner_buffer[..ni]);
-
-        if inner_request.contains("Upgrade: websocket") {
-            handle_websocket_stream(tls_stream, target_addr).await?;
-        } else if inner_request.contains("Upgrade: security") {
-            tls_stream.write_all(b"HTTP/1.1 200 OK\r\nUpgrade: security\r\n\r\n").await?;
-            let mut server_stream = TcpStream::connect(target_addr).await?;
-            copy_bidirectional(&mut tls_stream, &mut server_stream).await?;
-        } else {
-            let mut server_stream = TcpStream::connect(target_addr).await?;
-            if ni > 0 {
-                server_stream.write_all(&inner_buffer[..ni]).await?;
-            }
-            copy_bidirectional(&mut tls_stream, &mut server_stream).await?;
+impl Proxy {
+    pub fn new(port: u16) -> Self {
+        Self {
+            port,
+            multi_protocol: true,
+            ssl_support: true,
+            ssh_support: true,
+            websocket_support: true,
+            xhttp_support: true,
         }
-        return Ok(());
     }
 
-    // 2. Detecção de HTTP / WS / SECURITY / SSH-HTTP
-    let request = String::from_utf8_lossy(&buffer[..n]);
+    pub async fn run(&self) -> Result<(), anyhow::Error> {
+        let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", self.port)).await?;
+        log::info!("BSProxy listening on port {}", self.port);
 
-    if request.contains("Upgrade: websocket") {
-        handle_websocket_stream(client_stream, target_addr).await?;
-    } else if request.contains("Upgrade: security") {
-        // Consumir o request antes de responder
-        let _ = client_stream.read(&mut buffer).await?;
-        client_stream.write_all(b"HTTP/1.1 200 OK\r\nUpgrade: security\r\n\r\n").await?;
-        let mut server_stream = TcpStream::connect(target_addr).await?;
-        copy_bidirectional(&mut client_stream, &mut server_stream).await?;
-    } else if request.contains("HTTP/") || request.contains("GET") || request.contains("POST") || request.contains("CONNECT") {
-        // Enviar o primeiro status (101 Switching) conforme o código original que funcionava
-        client_stream.write_all(format!("HTTP/1.1 101 {}\r\n\r\n", status_to_send).as_bytes()).await?;
-        
-        // Ler o request real do cliente
-        let _ = client_stream.read(&mut buffer).await?;
-        
-        // Enviar o segundo status (200 OK) conforme o código original
-        client_stream.write_all(format!("HTTP/1.1 200 {}\r\n\r\n", status_to_send).as_bytes()).await?;
+        let handler = MultiProtocolHandler::new();
 
-        let mut server_stream = TcpStream::connect(target_addr).await?;
-        copy_bidirectional(&mut client_stream, &mut server_stream).await?;
-    } else {
-        // SSH Direto ou outro protocolo binário
-        let mut server_stream = TcpStream::connect(target_addr).await?;
-        copy_bidirectional(&mut client_stream, &mut server_stream).await?;
+        loop {
+            let (stream, addr) = listener.accept().await?;
+            log::info!("New connection from {}", addr);
+
+            let handler_clone = handler.clone();
+            
+            tokio::spawn(async move {
+                if let Err(e) = handler_clone.handle_connection(stream).await {
+                    log::error!("Error handling connection: {}", e);
+                }
+            });
+        }
     }
+}
 
-    Ok(())
+// Suporte a XHTTP na porta 443
+pub async fn run_xhttp_server() -> Result<(), anyhow::Error> {
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:443").await?;
+    log::info!("XHTTP server listening on port 443");
+
+    let websocket_handler = WebSocketHandler::new();
+
+    loop {
+        let (stream, addr) = listener.accept().await?;
+        log::info!("XHTTP connection from {}", addr);
+
+        let handler = websocket_handler.clone();
+        
+        tokio::spawn(async move {
+            if let Err(e) = handler.handle_xhttp_connection(stream).await {
+                log::error!("Error handling XHTTP: {}", e);
+            }
+        });
+    }
 }
