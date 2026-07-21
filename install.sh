@@ -24,6 +24,7 @@ if [ "$EUID" -ne 0 ]; then
     error_exit "EXECUTE COMO ROOT"
 else
     clear
+
     # Banner BSPROXY
     echo -e "\033[0;34m   ██████╗ ███████╗██████╗ ██████╗  ██████╗ ██╗  ██╗██╗   ██╗"
     echo -e "\033[0;37m   ██╔══██╗██╔════╝██╔══██╗██╔══██╗██╔═══██╗╚██╗██╔╝╚██╗ ██╔╝"
@@ -32,8 +33,6 @@ else
     echo -e "\033[0;34m   ██████╔╝███████║██║     ██║  ██║╚██████╔╝██╔╝ ██╗   ██║   "
     echo -e "\033[0;37m   ╚═════╝ ╚══════╝╚═╝     ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝   ╚═╝   "
     echo -e "\033[0;34m--------------------------------------------------------------\033[0m"
-    echo -e "\033[31m              DEV:@BS  ED:@BS \033[0m              "              
-    echo -e " "
 
     show_progress "Atualizando repositorios..."
     export DEBIAN_FRONTEND=noninteractive
@@ -67,7 +66,7 @@ else
 
     show_progress "Atualizando o sistema..."
     apt upgrade -y > /dev/null 2>&1 || error_exit "Falha ao atualizar o sistema"
-    apt-get install curl build-essential git pkg-config libssl-dev -y > /dev/null 2>&1 || error_exit "Falha ao instalar pacotes"
+    apt-get install curl build-essential git -y > /dev/null 2>&1 || error_exit "Falha ao instalar pacotes"
     increment_step
 
     show_progress "Criando diretorio /opt/bsproxy..."
@@ -77,12 +76,7 @@ else
     show_progress "Instalando Rust..."
     if ! command -v rustc &> /dev/null; then
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y > /dev/null 2>&1 || error_exit "Falha ao instalar Rust"
-        # Força o PATH para a sessão atual
-        export PATH="$HOME/.cargo/bin:$PATH"
-        echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc
-        echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.zshrc
-    else
-        rustup update > /dev/null 2>&1
+        source "$HOME/.cargo/env"
     fi
     increment_step
 
