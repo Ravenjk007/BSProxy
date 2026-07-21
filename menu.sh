@@ -1,6 +1,5 @@
 #!/bin/bash
-# BSProxy Manager - menu interativo de portas (estilo RustyManager)
-
+# BSProxy Manager - Free
 PROXY_BIN="/opt/bsproxy/proxy"
 SERVICE_PREFIX="bsproxy-"
 DEFAULT_TARGET="127.0.0.1:22"
