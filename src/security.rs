@@ -1,51 +1,24 @@
-use std::sync::Arc;
-use dashmap::DashMap;
-use log::{info, warn};
-use std::net::IpAddr;
-use tokio::time::{interval, Duration};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpStream;
+use anyhow::Result;
+use log::info;
 
-#[derive(Clone)]
-pub struct SecurityManager {
-    connections: Arc<DashMap<IpAddr, usize>>,
-    pub max_per_ip: usize,
-}
-
-impl SecurityManager {
-    pub fn new() -> Self {
-        let manager = SecurityManager {
-            connections: Arc::new(DashMap::new()),
-            max_per_ip: 15,
-        };
-
-        // Limpeza periódica
-        let conns = manager.connections.clone();
-        tokio::spawn(async move {
-            let mut ticker = interval(Duration::from_secs(60));
-            loop {
-                ticker.tick().await;
-                conns.retain(|_, count| *count > 0);
-            }
-        });
-
-        manager
-    }
-
-    pub fn allow_connection(&self, ip: IpAddr) -> bool {
-        let entry = self.connections.entry(ip).or_insert(0);
-        if *entry < self.max_per_ip {
-            *entry += 1;
-            true
-        } else {
-            warn!("🚫 IP bloqueado por excesso de conexões: {}", ip);
-            false
-        }
-    }
-
-    pub fn release(&self, ip: IpAddr) {
-        if let Some(mut count) = self.connections.get_mut(&ip) {
-            if *count > 0 {
-                *count -= 1;
-            }
-        }
-    }
+pub async fn handle_security(mut socket: TcpStream) -> Result<()> {
+    info!("🔐 SECURITY handshake...");
+    
+    let mut buf = [0u8; 256];
+    let n = socket.read(&mut buf).await?;
+    let data = String::from_utf8_lossy(&buf[..n]);
+    
+    info!("📩 SECURITY: {}", data);
+    
+    let response = "HTTP/1.1 200 OK\r\n\
+                    Connection: Upgrade\r\n\
+                    Upgrade: security\r\n\
+                    \r\n";
+    
+    socket.write_all(response.as_bytes()).await?;
+    info!("🔐 SECURITY complete!");
+    
+    Ok(())
 }
