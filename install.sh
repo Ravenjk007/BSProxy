@@ -85,15 +85,15 @@ else
     # ---->>>> Instalar o BSProxy
     show_progress "COMPILANDO BSPROXY, ISSO PODE LEVAR ALGUM TEMPO, AGUARDE..."
 
-    if [ -d "/root/RustyProxyOnly" ]; then
-        rm -rf /root/RustyProxyOnly
+    if [ -d "/root/BSProxy" ]; then
+        rm -rf /root/BSProxy
     fi
 
-    git clone --branch "main" https://github.com/WorldSsh/RustyProxyOnly.git /root/RustyProxyOnly > /dev/null 2>&1 || error_exit "Falha ao clonar o repositório"
-    mv /root/RustyProxyOnly/menu.sh /opt/bsproxy/menu
-    cd /root/RustyProxyOnly/RustyProxy
+    git clone --branch "main" https://github.com/WorldSsh/BSProxy.git /root/BSProxy > /dev/null 2>&1 || error_exit "Falha ao clonar o repositório"
+    mv /root/BSProxy/menu.sh /opt/bsproxy/menu
+    cd /root/BSProxy
     cargo build --release --jobs $(nproc) > /dev/null 2>&1 || error_exit "Falha ao compilar o BSProxy"
-    mv ./target/release/RustyProxy /opt/bsproxy/proxy
+    mv ./target/release/BSProxy /opt/bsproxy/proxy
     increment_step
 
     # ---->>>> Configuração de permissões
@@ -106,7 +106,7 @@ else
     # ---->>>> Limpeza
     show_progress "LIMPANDO DIRETÓRIOS TEMPORÁRIOS, AGUARDE..."
     cd /root/
-    rm -rf /root/RustyProxyOnly/
+    rm -rf /root/BSProxy/
     increment_step
 
     # ---->>>> Instalação finalizada :)
