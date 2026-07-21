@@ -1,25 +1,16 @@
 use tokio::net::TcpStream;
-use tokio_rustls::{TlsAcceptor, server::TlsStream};
-use rustls::{ServerConfig, Certificate, PrivateKey};
-use std::sync::Arc;
-use anyhow::Result;
-use rcgen::generate_simple_self_signed;
+use tokio::io::{copy_bidirectional};
+use std::error::Error;
+use log::info;
 
-pub async fn get_tls_acceptor() -> Result<TlsAcceptor> {
-    let cert = generate_simple_self_signed(vec!["localhost".to_string()])?;
-    let cert_der = cert.serialize_der()?;
-    let key_der = cert.serialize_private_key_der();
+pub async fn handle_tls_stream(
+    mut client_stream: TcpStream,
+    target_addr: &str,
+) -> Result<(), Box<dyn Error>> {
+    info!("🔒 TLS Handler para {}", target_addr);
     
-    let config = ServerConfig::builder()
-        .with_safe_defaults()
-        .with_no_client_auth()
-        .with_single_cert(vec![Certificate(cert_der)], PrivateKey(key_der))?;
+    let mut server_stream = TcpStream::connect(target_addr).await?;
+    copy_bidirectional(&mut client_stream, &mut server_stream).await?;
     
-    Ok(TlsAcceptor::from(Arc::new(config)))
-}
-
-pub async fn handle_tls_stream(socket: TcpStream) -> Result<TlsStream<TcpStream>> {
-    let acceptor = get_tls_acceptor().await?;
-    let tls_stream = acceptor.accept(socket).await?;
-    Ok(tls_stream)
+    Ok(())
 }
