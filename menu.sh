@@ -4,7 +4,7 @@
 PROXY_BIN="/opt/bsproxy/proxy"
 SERVICE_PREFIX="bsproxy-"
 DEFAULT_TARGET="127.0.0.1:22"
-DEFAULT_STATUS="ROTATE"
+DEFAULT_STATUS="SSHPRO"
 
 list_ports() {
     systemctl list-units --type=service --all --no-legend "${SERVICE_PREFIX}*.service" 2>/dev/null \
@@ -22,7 +22,6 @@ show_menu() {
     echo "|                 BSPROXY                      |"
     echo "------------------------------------------------"
     echo "| Porta(s): $ports"
-    echo "| Status padrão: ${DEFAULT_STATUS}"
     echo "------------------------------------------------"
     echo "| 1 - Abrir Porta"
     echo "| 2 - Fechar Porta"
@@ -32,13 +31,13 @@ show_menu() {
 
 open_port() {
     read -rp "Digite a porta que deseja abrir: " port
-    if ! [[ "\( port" =\~ ^[0-9]+ \) ]] || [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
+    if ! [[ "$port" =~ ^[0-9]+$ ]] || [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
         echo "Porta inválida."
         sleep 2
         return
     fi
 
-    local service="\( {SERVICE_PREFIX} \){port}.service"
+    local service="${SERVICE_PREFIX}${port}.service"
     if [ -f "/etc/systemd/system/${service}" ]; then
         echo "Essa porta já está aberta pelo BSProxy."
         sleep 2
@@ -52,7 +51,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=${PROXY_BIN} --port \( {port} --status " \){DEFAULT_STATUS}" --target ${DEFAULT_TARGET}
+ExecStart=${PROXY_BIN} --port ${port} --status "${DEFAULT_STATUS}" --target ${DEFAULT_TARGET}
 Restart=always
 RestartSec=3
 
@@ -66,7 +65,7 @@ EOF
 
     sleep 1
     if systemctl is-active --quiet "${service}"; then
-        echo "Porta ${port} aberta com sucesso (Status: ${DEFAULT_STATUS})."
+        echo "Porta ${port} aberta com sucesso."
     else
         echo "Falha ao iniciar. Veja: journalctl -u ${service} --no-pager"
         rm -f "/etc/systemd/system/${service}"
@@ -86,7 +85,7 @@ close_port() {
 
     echo "Portas abertas: $(echo "$ports" | tr '\n' ' ')"
     read -rp "Digite a porta que deseja fechar: " port
-    local service="\( {SERVICE_PREFIX} \){port}.service"
+    local service="${SERVICE_PREFIX}${port}.service"
 
     if [ ! -f "/etc/systemd/system/${service}" ]; then
         echo "Essa porta não está aberta pelo BSProxy."
