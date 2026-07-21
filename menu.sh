@@ -4,7 +4,7 @@
 PROXY_BIN="/opt/bsproxy/proxy"
 SERVICE_PREFIX="bsproxy-"
 DEFAULT_TARGET="127.0.0.1:22"
-DEFAULT_STATUS="@BSProxy"
+DEFAULT_STATUS="SSHPRO"
 
 list_ports() {
     systemctl list-units --type=service --all --no-legend "${SERVICE_PREFIX}*.service" 2>/dev/null \
