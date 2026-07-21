@@ -8,7 +8,6 @@ mod socks5;
 mod tcp_fallback;
 
 pub use config::Config;
-pub use handler::start_proxy;
 pub use protocol::ProtocolDetector;
 pub use security::SecurityManager;
 
