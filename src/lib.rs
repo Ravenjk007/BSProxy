@@ -1,14 +1,17 @@
-[package]
-name = "bsproxy"
-version = "0.4.0"
-edition = "2021"
+pub mod config;
+pub mod protocol;
+pub mod handler;
+pub mod security;
+pub mod websocket;
+pub mod tls;
+pub mod ssh;
+pub mod socks5;
+pub mod tcp_fallback;
 
-[dependencies]
-tokio = { version = "1", features = ["full"] }
-env_logger = "0.11"
-log = "0.4"
-clap = { version = "4.5", features = ["derive"] }
-serde = { version = "1.0", features = ["derive"] }
-toml = "0.8"
-bytes = "1.6"
-dashmap = "6.0"        # Para métricas thread-safe
+pub use config::Config;
+pub use handler::start_proxy;
+pub use protocol::ProtocolDetector;
+pub use security::SecurityManager;
+
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const DEFAULT_STATUS: &str = "@BSPROXY";
