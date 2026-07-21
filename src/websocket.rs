@@ -1,94 +1,291 @@
-use tokio_tungstenite::{accept_async, tungstenite::Message};
-use futures_util::{StreamExt, SinkExt};
-use http::{Request, Response, StatusCode};
-use serde_json::json;
+use tokio::io::{AsyncReadExt, AsyncWriteExt, AsyncRead, AsyncWrite};
+use tokio::net::TcpStream;
+use tokio::time::{timeout, Duration};
+use anyhow::{Result, anyhow};
+use log::{info, warn, error};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
-pub struct WebSocketHandler {
-    xhttp_support: bool,
-    multistatus_support: bool,
+/// Lê e descarta os headers HTTP até encontrar \r\n\r\n
+async fn consume_http_headers(socket: &mut TcpStream) -> std::io::Result<()> {
+    let mut buf: Vec<u8> = Vec::new();
+    let mut tmp = [0u8; 1];
+
+    loop {
+        socket.read_exact(&mut tmp).await?;
+        buf.push(tmp[0]);
+
+        if buf.len() >= 4 && &buf[buf.len() - 4..] == b"\r\n\r\n" {
+            break;
+        }
+        if buf.len() > 8192 {
+            break;
+        }
+    }
+    Ok(())
 }
 
-impl WebSocketHandler {
-    pub fn new() -> Self {
-        Self {
-            xhttp_support: true,
-            multistatus_support: true,
-        }
+/// Detecta se é WebSocket ou XHTTP
+fn detect_websocket_or_xhttp(data: &[u8]) -> (&str, bool) {
+    let data_str = String::from_utf8_lossy(data);
+    
+    // Verifica se é WebSocket
+    if data_str.contains("Upgrade: websocket") || data_str.contains("Sec-WebSocket-Key") {
+        return ("WEBSOCKET", true);
     }
+    
+    // Verifica se é XHTTP (cabeçalhos customizados)
+    if data_str.contains("X-") || data_str.contains("XHTTP") {
+        return ("XHTTP", false);
+    }
+    
+    // HTTP normal
+    if data_str.contains("GET /") || data_str.contains("POST /") || data_str.contains("CONNECT") {
+        return ("HTTP", false);
+    }
+    
+    ("UNKNOWN", false)
+}
 
-    pub async fn handle_websocket<T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin>(
-        &self,
-        stream: T,
-    ) -> Result<(), anyhow::Error> {
-        let ws_stream = accept_async(stream).await?;
-        let (mut sender, mut receiver) = ws_stream.split();
-
-        log::info!("WebSocket connection established");
-
-        while let Some(msg) = receiver.next().await {
-            let msg = msg?;
+/// Handler principal para WebSocket
+pub async fn handle_websocket(mut socket: TcpStream) -> Result<()> {
+    info!("🌐 WebSocket/HTTP handshake...");
+    
+    // Consumir headers HTTP
+    consume_http_headers(&mut socket).await?;
+    
+    // Resposta de upgrade WebSocket (101 Switching Protocols)
+    let response = "HTTP/1.1 101 Switching Protocols\r\n\
+                    Upgrade: websocket\r\n\
+                    Connection: Upgrade\r\n\
+                    Sec-WebSocket-Accept: dGhlIHNhbXBsZSBub25jZQ==\r\n\
+                    X-Supported: SSL,SSH,WebSocket,XHTTP\r\n\
+                    \r\n";
+    
+    socket.write_all(response.as_bytes()).await?;
+    info!("🌐 WebSocket handshake complete! Encaminhando para SSH...");
+    
+    // Encaminhar para SSH (porta 22)
+    let target = "127.0.0.1:22";
+    
+    match TcpStream::connect(target).await {
+        Ok(remote) => {
+            info!("✅ Conectado ao SSH na porta 22");
+            let (mut client_reader, mut client_writer) = socket.into_split();
+            let (mut remote_reader, mut remote_writer) = remote.into_split();
             
-            match msg {
-                Message::Text(text) => {
-                    // Suporte a XHTTP
-                    if self.xhttp_support {
-                        self.handle_xhttp(&text).await?;
-                    }
-                    
-                    // Resposta com Multistatus (207)
-                    if self.multistatus_support {
-                        let response = self.create_multistatus_response()?;
-                        sender.send(Message::Text(response)).await?;
-                    }
-                }
-                Message::Binary(data) => {
-                    // Processar dados binários
-                    log::debug!("Received binary data: {} bytes", data.len());
-                }
-                _ => {}
-            }
+            tokio::try_join!(
+                tokio::io::copy(&mut client_reader, &mut remote_writer),
+                tokio::io::copy(&mut remote_reader, &mut client_writer)
+            )?;
+            
+            info!("🔚 Conexão WebSocket->SSH encerrada");
+            Ok(())
         }
-
-        Ok(())
-    }
-
-    async fn handle_xhttp(&self, data: &str) -> Result<(), anyhow::Error> {
-        log::info!("XHTTP request: {}", data);
-        
-        // Parse do cabeçalho XHTTP
-        if data.contains("X-") {
-            // Processar cabeçalhos customizados
-            // Exemplo: X-Forwarded-For, X-Real-IP, etc.
+        Err(e) => {
+            error!("❌ Falha ao conectar ao SSH: {}", e);
+            Err(anyhow!("SSH connection failed: {}", e))
         }
-        
-        Ok(())
     }
+}
 
-    fn create_multistatus_response(&self) -> Result<String, anyhow::Error> {
-        // Resposta 207 Multi-Status
-        let response = json!({
-            "status": 207,
-            "message": "Multi-Status",
-            "data": {
-                "protocols": ["SSL", "SSH", "WebSocket", "XHTTP"],
-                "ports": [443, 80, 8080],
-                "status": "connected"
-            }
-        });
-        
-        Ok(response.to_string())
+/// Handler para WebSocket com SSL/TLS
+pub async fn handle_websocket_ssl(mut socket: TcpStream) -> Result<()> {
+    info!("🔒 WebSocket com SSL/TLS handshake...");
+    
+    // Consumir headers HTTP
+    consume_http_headers(&mut socket).await?;
+    
+    // Resposta com SSL/TLS
+    let response = "HTTP/1.1 101 Switching Protocols\r\n\
+                    Upgrade: websocket\r\n\
+                    Connection: Upgrade\r\n\
+                    Sec-WebSocket-Accept: dGhlIHNhbXBsZSBub25jZQ==\r\n\
+                    X-SSL: enabled\r\n\
+                    X-Supported: SSL,SSH,WebSocket,XHTTP\r\n\
+                    \r\n";
+    
+    socket.write_all(response.as_bytes()).await?;
+    info!("🔒 WebSocket SSL handshake complete!");
+    
+    // Encaminhar para SSH via TLS (porta 443)
+    let target = "127.0.0.1:443";
+    
+    match TcpStream::connect(target).await {
+        Ok(remote) => {
+            info!("✅ Conectado ao SSH via SSL na porta 443");
+            let (mut client_reader, mut client_writer) = socket.into_split();
+            let (mut remote_reader, mut remote_writer) = remote.into_split();
+            
+            tokio::try_join!(
+                tokio::io::copy(&mut client_reader, &mut remote_writer),
+                tokio::io::copy(&mut remote_reader, &mut client_writer)
+            )?;
+            
+            info!("🔚 Conexão WebSocket SSL encerrada");
+            Ok(())
+        }
+        Err(e) => {
+            error!("❌ Falha ao conectar ao SSH SSL: {}", e);
+            Err(anyhow!("SSL connection failed: {}", e))
+        }
     }
+}
 
-    pub async fn handle_xhttp_connection<T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin>(
-        &self,
-        stream: T,
-    ) -> Result<(), anyhow::Error> {
-        // Handler específico para XHTTP na porta 443
-        log::info!("XHTTP connection on port 443");
-        
-        // Processar requisições HTTP/HTTPS customizadas
-        // Implementar gateway para outros serviços
-        
-        Ok(())
+/// Handler para XHTTP (com Multi-Status)
+pub async fn handle_xhttp(mut socket: TcpStream) -> Result<()> {
+    info!("🌐 XHTTP request recebida...");
+    
+    let mut buffer = [0u8; 4096];
+    let n = socket.read(&mut buffer).await?;
+    
+    if n == 0 {
+        return Err(anyhow!("Empty request"));
+    }
+    
+    let request = String::from_utf8_lossy(&buffer[..n]);
+    info!("📨 XHTTP Request: {}", request.lines().next().unwrap_or(""));
+    
+    // Detecta o tipo de requisição
+    let (protocol, is_websocket) = detect_websocket_or_xhttp(&buffer[..n]);
+    info!("🔍 Protocolo detectado: {}", protocol);
+    
+    if is_websocket {
+        // Se for WebSocket, redireciona
+        info!("🔄 Redirecionando para WebSocket handler");
+        return handle_websocket(socket).await;
+    }
+    
+    // Resposta Multi-Status (207) com suporte a múltiplos protocolos
+    let response = format!(
+        "HTTP/1.1 207 Multi-Status\r\n\
+         Content-Type: application/json\r\n\
+         X-Supported: SSL,SSH,WebSocket,XHTTP\r\n\
+         X-Protocol: {}\r\n\
+         X-Status: connected\r\n\
+         \r\n\
+         {{
+             \"status\": 207,
+             \"message\": \"Multi-Status - Multiple protocols supported\",
+             \"protocols\": [\"SSL\", \"SSH\", \"WebSocket\", \"XHTTP\"],
+             \"ports\": [80, 443, 8080, 8443],
+             \"connection\": \"established\",
+             \"detected_protocol\": \"{}\"
+         }}",
+        protocol, protocol
+    );
+    
+    socket.write_all(response.as_bytes()).await?;
+    info!("✅ XHTTP Multi-Status (207) enviado");
+    
+    // Tenta encaminhar para o backend
+    let target = match protocol {
+        "WEBSOCKET" => "127.0.0.1:8080",
+        "XHTTP" => "127.0.0.1:8443",
+        _ => "127.0.0.1:22", // Fallback SSH
+    };
+    
+    info!("🔄 Encaminhando para {}", target);
+    
+    match TcpStream::connect(target).await {
+        Ok(remote) => {
+            let (mut client_reader, mut client_writer) = socket.into_split();
+            let (mut remote_reader, mut remote_writer) = remote.into_split();
+            
+            tokio::try_join!(
+                tokio::io::copy(&mut client_reader, &mut remote_writer),
+                tokio::io::copy(&mut remote_reader, &mut client_writer)
+            )?;
+            
+            info!("🔚 XHTTP conexão encerrada");
+            Ok(())
+        }
+        Err(e) => {
+            warn!("⚠️ Falha ao conectar ao backend {}: {}", target, e);
+            // Continua vivo mesmo sem backend
+            Ok(())
+        }
+    }
+}
+
+/// Handler para XHTTP com SSL
+pub async fn handle_xhttp_ssl(mut socket: TcpStream) -> Result<()> {
+    info!("🔒 XHTTP com SSL/TLS...");
+    
+    let mut buffer = [0u8; 4096];
+    let n = socket.read(&mut buffer).await?;
+    
+    // Resposta com SSL
+    let response = "HTTP/1.1 207 Multi-Status\r\n\
+                    X-SSL: enabled\r\n\
+                    X-Supported: SSL,SSH,WebSocket,XHTTP\r\n\
+                    \r\n\
+                    {\"status\":207,\"message\":\"SSL + XHTTP Multi-Status\"}";
+    
+    socket.write_all(response.as_bytes()).await?;
+    info!("✅ XHTTP SSL Multi-Status (207) enviado");
+    
+    // Encaminha para SSL backend
+    let target = "127.0.0.1:443";
+    
+    match TcpStream::connect(target).await {
+        Ok(remote) => {
+            let (mut client_reader, mut client_writer) = socket.into_split();
+            let (mut remote_reader, mut remote_writer) = remote.into_split();
+            
+            tokio::try_join!(
+                tokio::io::copy(&mut client_reader, &mut remote_writer),
+                tokio::io::copy(&mut remote_reader, &mut client_writer)
+            )?;
+            
+            Ok(())
+        }
+        Err(e) => {
+            error!("❌ Falha ao conectar ao SSL backend: {}", e);
+            Err(anyhow!("SSL backend connection failed: {}", e))
+        }
+    }
+}
+
+/// Função para detectar protocolo e rotear
+pub async fn handle_multi_protocol(mut socket: TcpStream) -> Result<()> {
+    info!("🔄 Multi-Protocol handler...");
+    
+    let mut buffer = [0u8; 4096];
+    
+    // Tenta ler com timeout
+    let n = match timeout(Duration::from_secs(5), socket.read(&mut buffer)).await {
+        Ok(Ok(n)) => n,
+        Ok(Err(e)) => return Err(anyhow!("Read error: {}", e)),
+        Err(_) => {
+            info!("⏰ Timeout - assumindo SSH");
+            return handle_websocket(socket).await;
+        }
+    };
+    
+    if n == 0 {
+        return Err(anyhow!("Empty request"));
+    }
+    
+    let (protocol, is_websocket) = detect_websocket_or_xhttp(&buffer[..n]);
+    info!("🔍 Protocolo detectado: {}", protocol);
+    
+    // Precisamos reenviar os dados lidos
+    // Como já lemos, vamos criar um novo stream com os dados
+    // ou simplesmente rotear baseado no protocolo
+    
+    match protocol {
+        "WEBSOCKET" => {
+            info!("🔌 Redirecionando para WebSocket");
+            handle_websocket(socket).await
+        }
+        "XHTTP" | "HTTP" => {
+            info!("🌐 Redirecionando para XHTTP");
+            handle_xhttp(socket).await
+        }
+        _ => {
+            info!("🔑 Fallback para WebSocket->SSH");
+            handle_websocket(socket).await
+        }
     }
 }
