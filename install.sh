@@ -1,5 +1,5 @@
 #!/bin/bash
-# BSProxy Installer - Versão Free
+# BSProxy Installer
 REPO_URL="https://github.com/Ravenjk007/BSProxy.git"
 REPO_BRANCH="main"
 CMD_NAME="bsproxy"
@@ -56,7 +56,7 @@ else
 
     show_progress "Atualizando o sistema..."
     apt upgrade -y > /dev/null 2>&1 || error_exit "Falha ao atualizar o sistema"
-    apt-get install curl build-essential git pkg-config libssl-dev -y > /dev/null 2>&1 || error_exit "Falha ao instalar pacotes"
+    apt-get install curl build-essential git -y > /dev/null 2>&1 || error_exit "Falha ao instalar pacotes"
     increment_step
 
     show_progress "Criando diretorio /opt/bsproxy..."
@@ -68,24 +68,20 @@ else
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y > /dev/null 2>&1 || error_exit "Falha ao instalar Rust"
         source "$HOME/.cargo/env"
     fi
-    # Garantir que o cargo está no PATH para a sessão atual
-    [ -f "$HOME/.cargo/env" ] && source "$HOME/.cargo/env"
     increment_step
 
     show_progress "Compilando BSProxy, isso pode levar algum tempo..."
-    if [ -d "/root/BSProxy_Build" ]; then
-        rm -rf /root/BSProxy_Build
+    if [ -d "/root/BSProxy" ]; then
+        rm -rf /root/BSProxy
     fi
-    git clone --branch "$REPO_BRANCH" "$REPO_URL" /root/BSProxy_Build > /dev/null 2>&1 || error_exit "Falha ao clonar BSProxy"
+    git clone --branch "$REPO_BRANCH" "$REPO_URL" /root/BSProxy > /dev/null 2>&1 || error_exit "Falha ao clonar BSProxy"
 
-    cd /root/BSProxy_Build || error_exit "Diretório do BSProxy não encontrado"
-    
-    # Copiar o menu antes da limpeza
-    if [ -f menu.sh ]; then
-        cp menu.sh /opt/bsproxy/menu
+    if [ -f /root/BSProxy/menu.sh ]; then
+        cp /root/BSProxy/menu.sh /opt/bsproxy/menu
         chmod +x /opt/bsproxy/menu
     fi
 
+    cd /root/BSProxy || error_exit "Diretório do BSProxy não encontrado"
     cargo build --release --jobs "$(nproc)" > /dev/null 2>&1 || error_exit "Falha ao compilar BSProxy"
 
     if [ -f ./target/release/bsproxy ]; then
@@ -100,7 +96,7 @@ else
     chmod +x /opt/bsproxy/proxy
     [ -f /opt/bsproxy/menu ] && chmod +x /opt/bsproxy/menu
 
-    # Criar o link para o menu
+    # Criar o link usando cp (mais confiável)
     if [ -f /opt/bsproxy/menu ]; then
         cp /opt/bsproxy/menu /usr/local/bin/bsproxy
     else
@@ -111,20 +107,20 @@ else
 
     show_progress "Limpando diretórios temporários..."
     cd /root/
-    rm -rf /root/BSProxy_Build/
+    rm -rf /root/BSProxy/
     increment_step
 
     echo ""
     echo -e "\033[0;32m✅ Instalação concluída com sucesso!\033[0m"
     echo ""
     echo "🚀 Digite 'bsproxy' para acessar o menu."
+    echo "   Ou 'bsproxy -p 80' para abrir porta 80 diretamente."
     echo ""
-    echo "📡 Suporte All-in-One (Detecção Automática):"
-    echo "   - SSH / SSH + SSL"
-    echo "   - WebSocket / WS + SSL"
-    echo "   - OpenVPN / OVPN + SSL"
-    echo "   - Security / Security + SSL"
-    echo "   - XHTTP (Porta 443)"
-    echo "   - Multi-Status (Ex: 101|200)"
+    echo "📡 Protocolos suportados:"
+    echo "   - SOCKS5 (byte 0x05)"
+    echo "   - TLS/SECURITY (byte 0x16)"
+    echo "   - WebSocket (GET / ou HTTP/)"
+    echo "   - SECURITY (AUTH ou SECURITY)"
+    echo "   - TCP Fallback (qualquer outro)"
     echo ""
 fi
