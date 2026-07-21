@@ -73,9 +73,9 @@ else
     mkdir -p /opt/bsproxy > /dev/null 2>&1
     increment_step
 
-    show_progress "Instalando Rust..."
+    show_progress "Instalando BSPro..."
     if ! command -v rustc &> /dev/null; then
-        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y > /dev/null 2>&1 || error_exit "Falha ao instalar Rust"
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y > /dev/null 2>&1 || error_exit "Falha ao instalar BSProxy"
         source "$HOME/.cargo/env"
     fi
     increment_step
