@@ -1,4 +1,3 @@
-mod config;
 mod protocol;
 mod security;
 mod websocket;
