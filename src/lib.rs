@@ -1,6 +1,5 @@
 mod config;
 mod protocol;
-mod handler;
 mod security;
 mod websocket;
 mod tls;
