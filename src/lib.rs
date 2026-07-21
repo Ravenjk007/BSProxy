@@ -1,7 +1,7 @@
 mod protocol;
-mod security;
 mod websocket;
+mod socks5;
 mod tls;
 mod ssh;
-mod socks5;
+mod security;
 mod tcp_fallback;
