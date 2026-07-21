@@ -1,5 +1,5 @@
 #!/bin/bash
-# BSProxy Manager - menu interativo de portas (estilo RustyManager)
+# BSProxy Manager - Menu Multi-Protocolo Automático
 
 PROXY_BIN="/opt/bsproxy/proxy"
 SERVICE_PREFIX="bsproxy-"
@@ -23,16 +23,16 @@ show_menu() {
     echo "------------------------------------------------"
     echo "| Porta(s) Ativa(s): $ports"
     echo "------------------------------------------------"
-    echo "| 1 - Abrir Porta (SSH/WS/OVPN)"
-    echo "| 2 - Abrir Porta com SSL (SSH+SSL/WS+SSL/OVPN+SSL)"
-    echo "| 3 - Ativar XHTTP (Porta 443)"
-    echo "| 4 - Fechar Porta"
+    echo "| 1 - Abrir Nova Porta (Auto-Detecção)"
+    echo "| 2 - Ativar XHTTP (Porta 443)"
+    echo "| 3 - Fechar Porta"
     echo "| 0 - Sair"
+    echo "------------------------------------------------"
+    echo "| Suporte: SSH, WS, OVPN, SSL, SECURITY, XHTTP |"
     echo "------------------------------------------------"
 }
 
 open_port() {
-    local proto_mode=$1
     read -rp "Digite a porta que deseja abrir: " port
     if ! [[ "$port" =~ ^[0-9]+$ ]] || [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
         echo "Porta inválida."
@@ -40,26 +40,7 @@ open_port() {
         return
     fi
 
-    echo "Selecione o protocolo:"
-    echo "1) SSH"
-    echo "2) WebSocket"
-    echo "3) OpenVPN"
-    echo "4) Security"
-    read -rp "Opção: " proto_opt
-    
-    case $proto_opt in
-        1) protocol="ssh" ;;
-        2) protocol="websocket" ;;
-        3) protocol="openvpn" ;;
-        4) protocol="security" ;;
-        *) protocol="ssh" ;;
-    esac
-
-    if [ "$proto_mode" == "ssl" ]; then
-        protocol="${protocol}+ssl"
-    fi
-
-    read -rp "Digite o Status (ex: 200 OK ou 101|200 para multi): " status
+    read -rp "Digite o Status (ex: 200 OK ou 101|200): " status
     [ -z "$status" ] && status="$DEFAULT_STATUS"
 
     read -rp "Digite o Alvo (padrão: $DEFAULT_TARGET): " target
@@ -68,12 +49,12 @@ open_port() {
     local service="${SERVICE_PREFIX}${port}.service"
     cat > "/etc/systemd/system/${service}" <<EOF
 [Unit]
-Description=BSProxy na porta ${port} (${protocol})
+Description=BSProxy Auto na porta ${port}
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=${PROXY_BIN} --port ${port} --protocol ${protocol} --status "${status}" --target ${target}
+ExecStart=${PROXY_BIN} --port ${port} --status "${status}" --target ${target}
 Restart=always
 RestartSec=3
 
@@ -85,7 +66,7 @@ EOF
     systemctl enable "${service}" > /dev/null 2>&1
     systemctl start "${service}"
 
-    echo "Porta ${port} (${protocol}) aberta com sucesso."
+    echo "Porta ${port} aberta com sucesso (Multi-Protocolo Ativo)."
     sleep 2
 }
 
@@ -100,7 +81,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=${PROXY_BIN} --port 443 --protocol ssh+ssl --status "200 OK" --target 127.0.0.1:22
+ExecStart=${PROXY_BIN} --port 443 --status "200 OK" --target 127.0.0.1:22
 Restart=always
 RestartSec=3
 
@@ -140,10 +121,9 @@ while true; do
     show_menu
     read -rp "--> Selecione uma opção: " opt
     case "$opt" in
-        1) open_port "normal" ;;
-        2) open_port "ssl" ;;
-        3) activate_xhttp ;;
-        4) close_port ;;
+        1) open_port ;;
+        2) activate_xhttp ;;
+        3) close_port ;;
         0) exit 0 ;;
         *) echo "Opção inválida."; sleep 1 ;;
     esac
